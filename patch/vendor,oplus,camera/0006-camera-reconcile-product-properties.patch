@@ -1,0 +1,61 @@
+From 31eff24bb471fe15883d74f9b5722f0515069732 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Sun, 14 Jun 2026 14:29:26 -0600
+Subject: [PATCH 06/10] camera: reconcile product properties
+
+Align the camera product properties with the OEM baseline:
+
+- Append com.oplus.screenshot to ro.com.google.lens.oem_image_package to match
+  the baseline.
+- Drop ro.oplus.camera.livephoto.support (not present in the baseline) and
+  ro.camera.disableHeicUltraHDR (already set in sm8850-common/vendor.prop; the
+  duplicate here used a conflicting value across partitions).
+- Add the HDR feature properties (dolby_vision, hdr_vision_app,
+  localhdr_version, edrlistener, uhdr.support), the camera log and version
+  properties, and the related gallery, fusionlight and hdr-uniform properties
+  from the baseline.
+
+aux.packagelist / privapp.list are kept pointing at com.oplus.camera; the
+baseline's literal value names a package that is not shipped here. The
+persist.logd.log.load.* camera log-rate keys are retained.
+---
+ opluscamera.mk | 22 +++++++++++++++++++---
+ 1 file changed, 19 insertions(+), 3 deletions(-)
+
+diff --git a/opluscamera.mk b/opluscamera.mk
+index 8266a72..e763334 100644
+--- a/opluscamera.mk
++++ b/opluscamera.mk
+@@ -23,13 +23,29 @@ PRODUCT_COPY_FILES += \
+ # Properties
+ PRODUCT_PRODUCT_PROPERTIES += \
+     persist.vendor.camera.privapp.list=com.oplus.camera \
++    persist.sys.feature.dolby_vision=1 \
++    persist.sys.feature.dolby_vision_app=1 \
++    persist.sys.feature.hdr_vision_app=1 \
++    persist.sys.feature.localhdr_version=2 \
++    persist.sys.feature.support.edrlistener=true \
++    persist.sys.feature.uhdr.support=true \
++    persist.sys.camera.private.log.enable=debug,pre,mp \
++    ro.build.version.module.sub_api=2 \
++    ro.build.version.oplus.api=38 \
++    ro.build.version.oplus.sub_api=47 \
++    ro.build.version.oplusrom=V16.1.0 \
++    ro.build.version.oplusrom.confidential=V16.1.0 \
++    ro.build.version.oplusrom.display=16.0.8 \
+     ro.com.google.lens.oem_camera_package=com.oplus.camera \
+-    ro.com.google.lens.oem_image_package=com.oneplus.gallery \
++    ro.com.google.lens.oem_image_package=com.oneplus.gallery,com.oplus.screenshot \
++    ro.oplus.fusionlight=true \
+     ro.oplus.camera.defercap.support=1 \
++    ro.oplus.system.gallery.name=com.oneplus.gallery \
+     ro.oplus.system.camera.name=com.oplus.camera \
+     ro.oplus.camera.defercap.all.quick.visible.support=1 \
+-    ro.oplus.camera.livephoto.support=1 \
+-    ro.camera.disableHeicUltraHDR=1 \
++    ro.vendor.oplus.hdr.uniform=1 \
++    ro.vendor.oplus.vendorxml.enable=1 \
++    vendor.oplus.hdr.uniform.debug=1 \
+     oplus.software.camera.10bit=1 \
+     vendor.camera.aux.packagelist=com.oplus.camera \
+     ro.oplus.camera.facing.front.need.disable.nfc=1 \

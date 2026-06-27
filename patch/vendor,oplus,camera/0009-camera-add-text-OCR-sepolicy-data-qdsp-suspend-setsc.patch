@@ -1,0 +1,61 @@
+From 251336bc29785b98ecad987392394ec3bc1e4a40 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Wed, 24 Jun 2026 22:25:05 +0000
+Subject: [PATCH 09/10] camera: add text/OCR sepolicy (data/qdsp/suspend +
+ setsched)
+
+Text/OCR mode hit four AVC denials. Allow:
+  * opluscamera_app -> vendor_camera_data_file (dir/file),
+    vendor_qdsp_device:chr_file open, and binder_call to system_suspend;
+  * cameraserver -> opluscamera_app:process setsched (both are core domains).
+
+The matching vendor_qdsp_device neverallow carve-out lives in the sm8850
+sepolicy_vndr fork.
+---
+ sepolicy/private/cameraserver.te    | 3 +++
+ sepolicy/private/opluscamera_app.te | 1 +
+ sepolicy/vendor/opluscamera_app.te  | 7 +++++--
+ 3 files changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/sepolicy/private/cameraserver.te b/sepolicy/private/cameraserver.te
+index 409026b..e2c0f3b 100644
+--- a/sepolicy/private/cameraserver.te
++++ b/sepolicy/private/cameraserver.te
+@@ -1,2 +1,5 @@
+ allow cameraserver data_system_camera_rus:dir { read open search };
+ allow cameraserver data_system_camera_rus:file { read getattr setattr open };
++
++# cameraserver bumps the camera-app client RT priority (OOS grants; was permissive avc)
++allow cameraserver opluscamera_app:process setsched;
+diff --git a/sepolicy/private/opluscamera_app.te b/sepolicy/private/opluscamera_app.te
+index 5022040..c6848e2 100644
+--- a/sepolicy/private/opluscamera_app.te
++++ b/sepolicy/private/opluscamera_app.te
+@@ -8,6 +8,7 @@ binder_use(opluscamera_app)
+ binder_call(opluscamera_app, system_server)
+ binder_call(opluscamera_app, surfaceflinger)
+ binder_call(opluscamera_app, statsd)
++binder_call(opluscamera_app, system_suspend)
+ 
+ #  Media / storage (same as platform_app)
+ allow opluscamera_app mnt_media_rw_file:dir   r_dir_perms;
+diff --git a/sepolicy/vendor/opluscamera_app.te b/sepolicy/vendor/opluscamera_app.te
+index 8d19f7e..5778d9c 100644
+--- a/sepolicy/vendor/opluscamera_app.te
++++ b/sepolicy/vendor/opluscamera_app.te
+@@ -18,10 +18,13 @@ allow opluscamera_app opluscamera_app_data_file:file { read open write create un
+ allow opluscamera_app opluscamera_app_data_file:dir { read open search write add_name remove_name create getattr rename setattr reparent rmdir };
+ 
+ # FastRPC devices
+-# vendor_qdsp_device: read-only only — neverallow on SM8750 blocks write/append
++# vendor_qdsp_device: read-only only — neverallow on SM8850 blocks write/append
+ # for non-HAL domains. The camera app only needs to open/read/ioctl for DSP
+ # session setup; actual writes go through the HAL.
+-allow opluscamera_app vendor_qdsp_device:chr_file { ioctl read };
++allow opluscamera_app vendor_qdsp_device:chr_file { ioctl read open };
++# TEXT/OCR (preview_documen, RefFrameProcess) traverse + read /data/vendor/camera
++allow opluscamera_app vendor_camera_data_file:dir  { search read write open getattr };
++allow opluscamera_app vendor_camera_data_file:file { read write create open getattr };
+ 
+ # selinuxfs
+ allow opluscamera_app selinuxfs:file { read open };

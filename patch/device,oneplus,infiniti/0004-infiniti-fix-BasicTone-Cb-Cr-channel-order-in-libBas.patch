@@ -1,0 +1,35 @@
+From f3c649b003283f4a26c2060663aacb45d9be2589 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 16 Jun 2026 22:00:34 -0600
+Subject: [PATCH 4/5] infiniti: fix BasicTone Cb/Cr channel-order in
+ libBasicTonePhoto
+
+Master/Pro mode routes through libBasicTonePhoto's OCCE tone-mapper.
+The embedded GLSL swaps Cb and Cr once too many on LOS, producing
+R/B-swapped output. Apply a length-preserving binary regex replace
+to swap the b/g arguments back:
+  vec4(dstYuv.r, dstYuv.b, dstYuv.g, 1.0)
+-> vec4(dstYuv.r, dstYuv.g, dstYuv.b, 1.0)
+---
+ extract-files.py | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/extract-files.py b/extract-files.py
+index 6958ad2..de77b14 100755
+--- a/extract-files.py
++++ b/extract-files.py
+@@ -65,6 +65,14 @@ blob_fixups: blob_fixups_user_type = {
+         .clear_symbol_version('AHardwareBuffer_unlock'),
+     'odm/lib64/libAlgoProcess.so': blob_fixup()
+         .replace_needed('android.hardware.graphics.common-V5-ndk.so', 'android.hardware.graphics.common-V7-ndk.so'),
++    # Master/Pro mode routes through libBasicTonePhoto's OCCE tone-mapper.
++    # The embedded GLSL swaps Cb/Cr once too many on LOS, producing R/B-swapped output. Undo the
++    # reorder in-place with a length-preserving fixup.
++    'odm/lib64/libBasicTonePhoto.so': blob_fixup()
++        .binary_regex_replace(
++            b'vec4\\(dstYuv\\.r, dstYuv\\.b, dstYuv\\.g, 1\\.0\\)',
++            b'vec4(dstYuv.r, dstYuv.g, dstYuv.b, 1.0)',
++        ),
+     'odm/lib64/liboprec_audrec.so': blob_fixup()
+         .replace_needed('libstdc++.so', 'libstdc++_vendor.so'),
+     'vendor/etc/libnfc-nci.conf': blob_fixup()

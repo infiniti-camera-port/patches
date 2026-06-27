@@ -1,0 +1,130 @@
+From b18103f94bbc49affe2c89536931c35c504b4d42 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 16 Jun 2026 00:44:51 -0600
+Subject: [PATCH 04/10] camera: fix gallery launch (compat-config +
+ default-permissions)
+
+Add two config-based fixes for the bundled gallery, installed to system_ext
+and wired in opluscamera.mk:
+
+ * configs/compatconfig/oplus-gallery-receiver-compat-config.xml re-declares
+   the AOSP change DYNAMIC_RECEIVER_EXPLICIT_EXPORT_REQUIRED (161145287) as
+   disabled, so the gallery's embedded AI-Unit SDK BroadcastDispatcher (a
+   dynamic receiver registered with flags=0) no longer throws the
+   RECEIVER_EXPORTED SecurityException that kills the gallery at launch.
+ * configs/permissions/default-permissions-oneplus-gallery.xml default-grants
+   the dangerous media/storage/location permissions com.oneplus.gallery
+   declares (user-revocable), fixing the "parse permissions denied" self-kill;
+   stock firmware grants these via an OEM default-permissions XML that is not
+   present in the blob dump.
+---
+ .../oplus-gallery-receiver-compat-config.xml  | 41 +++++++++++++++++++
+ .../default-permissions-oneplus-gallery.xml   | 35 ++++++++++++++++
+ opluscamera.mk                                |  4 +-
+ 3 files changed, 79 insertions(+), 1 deletion(-)
+ create mode 100644 configs/compatconfig/oplus-gallery-receiver-compat-config.xml
+ create mode 100644 configs/permissions/default-permissions-oneplus-gallery.xml
+
+diff --git a/configs/compatconfig/oplus-gallery-receiver-compat-config.xml b/configs/compatconfig/oplus-gallery-receiver-compat-config.xml
+new file mode 100644
+index 0000000..9e315ff
+--- /dev/null
++++ b/configs/compatconfig/oplus-gallery-receiver-compat-config.xml
+@@ -0,0 +1,41 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++ ********************************************************************************
++ ** File: oplus-gallery-receiver-compat-config.xml
++ ** Description:
++ **     Platform-compat override that re-declares the AOSP change
++ **     DYNAMIC_RECEIVER_EXPLICIT_EXPORT_REQUIRED (id 161145287) as disabled.
++ **
++ **     The preinstalled OnePlus Gallery (OppoGallery2, com.oneplus.gallery,
++ **     targetSdk 36) embeds the OPlus AI-Unit SDK, whose BroadcastDispatcher
++ **     registers a dynamic receiver for a custom (non-protected) broadcast via a
++ **     flags=0 code path (no RECEIVER_EXPORTED / RECEIVER_NOT_EXPORTED). On
++ **     Android 14+ that change is @EnabledSince(34), so AOSP
++ **     BroadcastController.registerReceiverWithFeatureTraced throws a
++ **     SecurityException ("One of RECEIVER_EXPORTED or RECEIVER_NOT_EXPORTED
++ **     should be specified ..."). The SDK registers from its own HandlerThread
++ **     with no try/catch, so the exception is uncaught and the gallery process
++ **     is killed at launch. (OnePlus's own framework does not enforce this for
++ **     system/priv apps, which is why the app shipped fine on stock OOS.)
++ **
++ **     CompatConfig.loadConfigFiles() reads /system/etc/compatconfig FIRST, then
++ **     /system_ext/etc/compatconfig, and readConfig() does
++ **     mChanges.put(id, new CompatChange(change)), so the last write by id wins.
++ **     This file (installed to system_ext) overwrites the platform definition of
++ **     161145287. CompatChange.isEnabled() short-circuits on disabled=true and
++ **     returns false for every app (CompatChange.java:249), so
++ **     requireExplicitFlagForDynamicReceivers becomes false and the throw is
++ **     skipped. (disabled is a static change-definition attribute, NOT a
++ **     per-package override, so the @Overridable gate is irrelevant here.)
++ **
++ ** NOTE: This relaxes the explicit-export-flag enforcement ROM-wide (not just
++ **       for the gallery), matching pre-Android-14 / OEM behavior. The
++ **       trade-off is minor: dynamic receivers that omit the export flag default
++ **       to exported instead of crashing. Accepted to keep the OnePlus gallery
++ **       working as a standalone app without forking frameworks/base or
++ **       re-signing the (obfuscated, 149 MB) APK.
++ ********************************************************************************/
++  -->
++<config>
++    <compat-change disabled="true" id="161145287" name="DYNAMIC_RECEIVER_EXPLICIT_EXPORT_REQUIRED" />
++</config>
+diff --git a/configs/permissions/default-permissions-oneplus-gallery.xml b/configs/permissions/default-permissions-oneplus-gallery.xml
+new file mode 100644
+index 0000000..9616d0a
+--- /dev/null
++++ b/configs/permissions/default-permissions-oneplus-gallery.xml
+@@ -0,0 +1,35 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++ ********************************************************************************
++ ** File: default-permissions-oneplus-gallery.xml
++ ** Description:
++ **     Default runtime (dangerous) permission grants for the preinstalled
++ **     OnePlus Gallery (OppoGallery2.apk, package com.oneplus.gallery).
++ **
++ **     OppoGallery2 ships as a preinstalled priv-app (camera-vendor.mk) and
++ **     requests dangerous USER_SENSITIVE media/storage/location permissions.
++ **     privapp-permissions only whitelists signature|privileged perms; it does
++ **     NOT auto-grant dangerous runtime perms. Stock OOS grants these via an OEM
++ **     default-permissions XML that was not captured in the blob dump, so on the
++ **     port the gallery boots with all media perms granted=false ->
++ **     "ExpandParseManager: parse permissions denied!" -> self-SIGKILL at launch.
++ **
++ **     This grants exactly the dangerous perms the gallery declares (fixed=false
++ **     so the user can still revoke them in Settings), restoring the first-boot
++ **     auto-grant a preinstalled system gallery expects.
++ ********************************************************************************/
++  -->
++<exceptions>
++    <exception package="com.oneplus.gallery">
++        <permission name="android.permission.READ_MEDIA_IMAGES" fixed="false"/>
++        <permission name="android.permission.READ_MEDIA_VIDEO" fixed="false"/>
++        <permission name="android.permission.READ_MEDIA_AUDIO" fixed="false"/>
++        <permission name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" fixed="false"/>
++        <permission name="android.permission.READ_EXTERNAL_STORAGE" fixed="false"/>
++        <permission name="android.permission.WRITE_EXTERNAL_STORAGE" fixed="false"/>
++        <permission name="android.permission.ACCESS_MEDIA_LOCATION" fixed="false"/>
++        <permission name="android.permission.ACCESS_COARSE_LOCATION" fixed="false"/>
++        <permission name="android.permission.ACCESS_FINE_LOCATION" fixed="false"/>
++        <permission name="android.permission.BLUETOOTH_CONNECT" fixed="false"/>
++    </exception>
++</exceptions>
+diff --git a/opluscamera.mk b/opluscamera.mk
+index b585fb0..72b4898 100644
+--- a/opluscamera.mk
++++ b/opluscamera.mk
+@@ -15,7 +15,9 @@ PRODUCT_PACKAGES += \
+ PRODUCT_COPY_FILES += \
+     $(LOCAL_PATH)/configs/permissions/oplus_google_lens_config.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/permissions/oplus_google_lens_config.xml \
+     $(LOCAL_PATH)/configs/permissions/privapp-permissions-oplus.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/permissions/privapp-permissions-oplus.xml \
+-    $(LOCAL_PATH)/configs/sysconfig/hiddenapi-package-oplus-whitelist.xml:$(TARGET_COPY_OUT_SYSTEM)/etc/sysconfig/hiddenapi-package-oplus-whitelist.xml
++    $(LOCAL_PATH)/configs/sysconfig/hiddenapi-package-oplus-whitelist.xml:$(TARGET_COPY_OUT_SYSTEM)/etc/sysconfig/hiddenapi-package-oplus-whitelist.xml \
++    $(LOCAL_PATH)/configs/permissions/default-permissions-oneplus-gallery.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/default-permissions/default-permissions-oneplus-gallery.xml \
++    $(LOCAL_PATH)/configs/compatconfig/oplus-gallery-receiver-compat-config.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/compatconfig/oplus-gallery-receiver-compat-config.xml
+ 
+ # Properties
+ PRODUCT_PRODUCT_PROPERTIES += \

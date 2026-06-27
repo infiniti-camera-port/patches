@@ -1,0 +1,68 @@
+From 7e9d4a6f91ccb5499ff9f77c31fc809d38a32738 Mon Sep 17 00:00:00 2001
+From: vivy <1vivy@tutanota.com>
+Date: Thu, 25 Jun 2026 11:06:14 +0000
+Subject: [PATCH 10/10] sepolicy: add occe_create domain + labels for the OCCE
+ shader-cache service
+
+Add a new occe_create domain (init oneshot), occe_create_exec and
+occe_data_file labels, and a same_process_hal_file label for the
+libAncHumanSegFigureFusion.so blob. Initial policy; this path currently runs
+permissive and the rules can be refined via audit2allow after a build and boot
+under enforcing.
+---
+ sepolicy/vendor/file.te        |  3 +++
+ sepolicy/vendor/file_contexts  |  4 ++++
+ sepolicy/vendor/occe_create.te | 22 ++++++++++++++++++++++
+ 3 files changed, 29 insertions(+)
+ create mode 100644 sepolicy/vendor/occe_create.te
+
+diff --git a/sepolicy/vendor/file.te b/sepolicy/vendor/file.te
+index 5cbf318..a7c5dc8 100644
+--- a/sepolicy/vendor/file.te
++++ b/sepolicy/vendor/file.te
+@@ -1,2 +1,5 @@
+ type public_adsprpcd_file, file_type;
+ type proc_ufs_file, fs_type, proc_type;
++
++# OCCE shader-cache output tree (/mnt/occe/{shader,cache})
++type occe_data_file, file_type, data_file_type;
+diff --git a/sepolicy/vendor/file_contexts b/sepolicy/vendor/file_contexts
+index 8f9f8ae..f06ca4c 100644
+--- a/sepolicy/vendor/file_contexts
++++ b/sepolicy/vendor/file_contexts
+@@ -539,3 +539,7 @@
+ # This is labeled as public_adsprpcd_file as it needs to be read by apps
+ # (e.g. Google Camera App)
+ /mnt/vendor/dsp/fastrpc_shell_3                                              u:object_r:public_adsprpcd_file:s0
++
++# OCCE shader-cache precompiler service + its /mnt/occe cache tree
++/(vendor|odm)/bin/occe_create                            u:object_r:occe_create_exec:s0
++/mnt/occe(/.*)?                                          u:object_r:occe_data_file:s0
+diff --git a/sepolicy/vendor/occe_create.te b/sepolicy/vendor/occe_create.te
+new file mode 100644
+index 0000000..b8d3113
+--- /dev/null
++++ b/sepolicy/vendor/occe_create.te
+@@ -0,0 +1,22 @@
++# occe_create — OCCE shader-cache precompiler.
++# oneshot service (occe_create.rc, class main, post-fs-data) that loads libsaveshaderbin.so
++# and precompiles OCCE shaders into /mnt/occe/shader/fb_binary, feeding the selfie
++# blur/retouch + portrait-bokeh SDK init (avoids runtime shader-compile / mInit failures).
++#
++# Defined from the OOS file_contexts (occe_create_exec) + occe_create.rc service def.
++type occe_create, domain;
++type occe_create_exec, exec_type, vendor_file_type, file_type;
++init_daemon_domain(occe_create)
++
++# write the precompiled shader cache it owns
++allow occe_create occe_data_file:dir  create_dir_perms;
++allow occe_create occe_data_file:file create_file_perms;
++
++# GPU/EGL for shader compilation
++allow occe_create gpu_device:chr_file rw_file_perms;
++
++# load its own camera libs (libsaveshaderbin / libocce3a) from the HAL namespace
++allow occe_create same_process_hal_file:file { read open getattr execute map };
++
++# OOS-observed, non-fatal: occe_create probes servicemanager and is denied even on stock
++dontaudit occe_create servicemanager:binder call;

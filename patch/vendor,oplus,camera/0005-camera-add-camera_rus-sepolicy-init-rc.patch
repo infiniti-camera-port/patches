@@ -1,0 +1,165 @@
+From b75a2a18d175ef91f67624bdded7a91de25a7827 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 16 Jun 2026 02:00:45 -0600
+Subject: [PATCH 05/10] camera: add camera_rus sepolicy + init rc
+
+Allow capture to survive enforcing SELinux without `setenforce 0`. The capture
+deferred-job store lives under /data/system/camera_rus, which the app must be
+able to write:
+
+  * sepolicy/private: new data_system_camera_rus type (file.te) + file_contexts
+    label + allow rules for opluscamera_app, cameraserver, system_server and
+    installd.
+  * sepolicy/public/opluscamera_app.te: add `typeattribute opluscamera_app
+    appdomain;`. The vendor-side app_domain() macro is invisible to the
+    system_ext_sepolicy.cil neverallow check, so without this the app reads as a
+    bare domain and trips the /data/system core_data_file_type neverallow.
+    Verified clean with `mka selinux_policy`.
+  * configs/init/init.oplus.camera_rus.rc (post-fs-data mkdir) installed to
+    system_ext/etc/init and wired in opluscamera.mk. This replaces the dead
+    init.camera_process.rc extract-files blob_fixup (its regex never matched),
+    which is removed here.
+---
+ configs/init/init.oplus.camera_rus.rc |  3 +++
+ extract-files.py                      | 23 -----------------------
+ opluscamera.mk                        |  3 ++-
+ sepolicy/private/cameraserver.te      |  2 ++
+ sepolicy/private/file.te              |  1 +
+ sepolicy/private/file_contexts        |  1 +
+ sepolicy/private/installd.te          |  2 ++
+ sepolicy/private/opluscamera_app.te   |  6 ++++++
+ sepolicy/private/system_server.te     |  2 ++
+ sepolicy/public/opluscamera_app.te    |  6 ++++++
+ 10 files changed, 25 insertions(+), 24 deletions(-)
+ create mode 100644 configs/init/init.oplus.camera_rus.rc
+ create mode 100644 sepolicy/private/cameraserver.te
+ create mode 100644 sepolicy/private/file.te
+ create mode 100644 sepolicy/private/file_contexts
+ create mode 100644 sepolicy/private/installd.te
+ create mode 100644 sepolicy/private/system_server.te
+
+diff --git a/configs/init/init.oplus.camera_rus.rc b/configs/init/init.oplus.camera_rus.rc
+new file mode 100644
+index 0000000..9f6de1f
+--- /dev/null
++++ b/configs/init/init.oplus.camera_rus.rc
+@@ -0,0 +1,3 @@
++on post-fs-data
++    mkdir /data/system/camera_rus 0777 cameraserver cameraserver
++    mkdir /data/vendor/camera_rus 0777 camera camera
+diff --git a/extract-files.py b/extract-files.py
+index 9213b59..c632983 100755
+--- a/extract-files.py
++++ b/extract-files.py
+@@ -163,29 +163,6 @@ blob_fixups = {
+         .call(blob_fixup_opluscamera_strip_oem_perms)
+         .apktool_pack()
+         .stripzip(),
+-    'odm/etc/init/init.camera_process.rc': blob_fixup()
+-        .regex_replace(
+-            '''on post-fs-data
+-    mkdir /data/vendor/camera_process 0777 camera camera
+-    mkdir /data/vendor/camera_process/livephoto 0777 camera camera
+-    mkdir /data/vendor/cam_alog 0777 camera camera
+-on property:sys.camera.user.removed=*
+-    #delete_recursion /data/vendor/camera_process/${sys.camera.user.removed}
+-''',
+-            '''on post-fs-data
+-    mkdir /data/vendor/camera_process 0777 camera camera
+-    mkdir /data/vendor/camera_process/livephoto 0777 camera camera
+-    mkdir /data/vendor/cam_alog 0777 camera camera
+-    # APS file storage for deferred-capture jobs (matches stock init.oplus.rootdir.rc).
+-    # Without these, APSFileStorage can't mkdir under system-owned /data/system,
+-    # defer-job params are never persisted (keepJob "Not found in FileSystem"),
+-    # and the offline metadata collapses to empty -> photo-capture crash.
+-    mkdir /data/system/camera_rus 0777 cameraserver cameraserver
+-    mkdir /data/vendor/camera_rus 0777 camera camera
+-on property:sys.camera.user.removed=*
+-    #delete_recursion /data/vendor/camera_process/${sys.camera.user.removed}
+-''',
+-        )
+ }  # fmt: skip
+ 
+ namespace_imports = [
+diff --git a/opluscamera.mk b/opluscamera.mk
+index 72b4898..8266a72 100644
+--- a/opluscamera.mk
++++ b/opluscamera.mk
+@@ -17,7 +17,8 @@ PRODUCT_COPY_FILES += \
+     $(LOCAL_PATH)/configs/permissions/privapp-permissions-oplus.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/permissions/privapp-permissions-oplus.xml \
+     $(LOCAL_PATH)/configs/sysconfig/hiddenapi-package-oplus-whitelist.xml:$(TARGET_COPY_OUT_SYSTEM)/etc/sysconfig/hiddenapi-package-oplus-whitelist.xml \
+     $(LOCAL_PATH)/configs/permissions/default-permissions-oneplus-gallery.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/default-permissions/default-permissions-oneplus-gallery.xml \
+-    $(LOCAL_PATH)/configs/compatconfig/oplus-gallery-receiver-compat-config.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/compatconfig/oplus-gallery-receiver-compat-config.xml
++    $(LOCAL_PATH)/configs/compatconfig/oplus-gallery-receiver-compat-config.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/compatconfig/oplus-gallery-receiver-compat-config.xml \
++    $(LOCAL_PATH)/configs/init/init.oplus.camera_rus.rc:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/init/init.oplus.camera_rus.rc
+ 
+ # Properties
+ PRODUCT_PRODUCT_PROPERTIES += \
+diff --git a/sepolicy/private/cameraserver.te b/sepolicy/private/cameraserver.te
+new file mode 100644
+index 0000000..409026b
+--- /dev/null
++++ b/sepolicy/private/cameraserver.te
+@@ -0,0 +1,2 @@
++allow cameraserver data_system_camera_rus:dir { read open search };
++allow cameraserver data_system_camera_rus:file { read getattr setattr open };
+diff --git a/sepolicy/private/file.te b/sepolicy/private/file.te
+new file mode 100644
+index 0000000..0cde7fc
+--- /dev/null
++++ b/sepolicy/private/file.te
+@@ -0,0 +1 @@
++type data_system_camera_rus, file_type, data_file_type, core_data_file_type;
+diff --git a/sepolicy/private/file_contexts b/sepolicy/private/file_contexts
+new file mode 100644
+index 0000000..ee4e8fe
+--- /dev/null
++++ b/sepolicy/private/file_contexts
+@@ -0,0 +1 @@
++/data/system/camera_rus(/.*)?    u:object_r:data_system_camera_rus:s0
+diff --git a/sepolicy/private/installd.te b/sepolicy/private/installd.te
+new file mode 100644
+index 0000000..f8c6585
+--- /dev/null
++++ b/sepolicy/private/installd.te
+@@ -0,0 +1,2 @@
++allow installd data_system_camera_rus:dir { read open search };
++allow installd data_system_camera_rus:file { read open };
+diff --git a/sepolicy/private/opluscamera_app.te b/sepolicy/private/opluscamera_app.te
+index 967fa62..5022040 100644
+--- a/sepolicy/private/opluscamera_app.te
++++ b/sepolicy/private/opluscamera_app.te
+@@ -17,6 +17,12 @@ allow opluscamera_app rootfs:dir              getattr;
+ allow opluscamera_app proc_vmstat:file        r_file_perms;
+ r_dir_file(opluscamera_app, proc_net_type)
+ 
++# Stock OP15 APS stores deferred-capture job bookkeeping under /data/system/camera_rus.
++# Without these the APSFileStorage mkdir fails -> defer-job params never persist
++# (keepJob "Not found in FileSystem") -> offline metadata collapses -> capture crash.
++allow opluscamera_app data_system_camera_rus:dir { read write create getattr setattr rename open add_name search };
++allow opluscamera_app data_system_camera_rus:file { read write create getattr setattr append unlink rename open };
++
+ #  Properties (same as platform_app)
+ get_prop(opluscamera_app, audio_config_prop)
+ get_prop(opluscamera_app, qemu_hw_prop)
+diff --git a/sepolicy/private/system_server.te b/sepolicy/private/system_server.te
+new file mode 100644
+index 0000000..2c4ad7f
+--- /dev/null
++++ b/sepolicy/private/system_server.te
+@@ -0,0 +1,2 @@
++allow system_server data_system_camera_rus:dir { ioctl read write create getattr setattr lock relabelfrom rename open watch watch_reads add_name remove_name reparent search rmdir };
++allow system_server data_system_camera_rus:file { ioctl read write create getattr setattr lock append map unlink rename open watch watch_reads };
+diff --git a/sepolicy/public/opluscamera_app.te b/sepolicy/public/opluscamera_app.te
+index ee60867..bb30f90 100644
+--- a/sepolicy/public/opluscamera_app.te
++++ b/sepolicy/public/opluscamera_app.te
+@@ -1,2 +1,8 @@
+ type opluscamera_app, domain, mlstrustedsubject;
++# Mark as appdomain in PUBLIC (plat-visible) policy, not only via the vendor-side
++# app_domain() macro: the system_ext_sepolicy.cil neverallow check runs without vendor
++# policy, so the vendor-set attribute is invisible there and opluscamera_app would be
++# seen as a bare non-app domain -> tripping the /data/system core_data_file_type
++# neverallows (domain.te:1108/1132) for the camera_rus allows. (Matches OP15InfinityX.)
++typeattribute opluscamera_app appdomain;
+ type opluscamera_app_data_file, file_type, data_file_type, app_data_file_type;

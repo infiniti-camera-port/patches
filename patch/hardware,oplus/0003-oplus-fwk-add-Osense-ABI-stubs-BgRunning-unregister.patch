@@ -1,0 +1,54 @@
+From ba81f2cae718854f0b4b97f0a05ea5514ddd5d99 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 16 Jun 2026 22:00:27 -0600
+Subject: [PATCH 3/3] oplus-fwk: add Osense ABI stubs (BgRunning + unregister)
+
+Camera app calls startBackgroundRunning / stopBackgroundRunning /
+unregisterEventCallback at startup; without these the oplus-fwk boot jar
+throws NoSuchMethodError and camera init fails. Add no-op stubs (same
+pattern as the existing OsenseResEventClient skeleton) so the camera
+stack boots cleanly on LineageOS.
+
+Keeps both startBackgroundRunning overloads (BgRunningCallback and
+OsenseEventCallback) to satisfy either OEM descriptor.
+---
+ .../com/oplus/osense/OsenseResEventClient.java  | 17 ++++++++++++++---
+ 1 file changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/oplus-fwk/src/com/oplus/osense/OsenseResEventClient.java b/oplus-fwk/src/com/oplus/osense/OsenseResEventClient.java
+index 58366c71..5b44e977 100644
+--- a/oplus-fwk/src/com/oplus/osense/OsenseResEventClient.java
++++ b/oplus-fwk/src/com/oplus/osense/OsenseResEventClient.java
+@@ -1,9 +1,10 @@
+ package com.oplus.osense;
+ 
++import android.content.Context;
++import android.os.Bundle;
+ import com.oplus.osense.eventinfo.EventConfig;
+ import com.oplus.osense.eventinfo.OsenseEventCallback;
+-import android.os.Bundle;
+-import android.content.Context;
++import com.oplus.osense.task.BgRunningCallback;
+ 
+ public class OsenseResEventClient {
+ 
+@@ -24,8 +25,18 @@ public class OsenseResEventClient {
+         return 0;
+     }
+ 
++    public int unregisterEventCallback(OsenseEventCallback callback) {
++        return 0;
++    }
++
+     public void requestSceneAction(Bundle bundle) {
+-        return;
++    }
++
++    public void startBackgroundRunning(Context context, int type, BgRunningCallback callback) {
++    }
++
++    public boolean stopBackgroundRunning(Context context, int type) {
++        return false;
+     }
+ 
+     public int requestInstantCpuLoad() {

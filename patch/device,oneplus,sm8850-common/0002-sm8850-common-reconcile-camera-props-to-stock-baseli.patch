@@ -1,0 +1,28 @@
+From 5b7ed8c30b7b3cf94701022b36fd440a2a115ea2 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Sun, 14 Jun 2026 14:28:06 -0600
+Subject: [PATCH 2/3] sm8850-common: reconcile camera props to stock baseline
+
+The stock vendor build.prop sets ro.camera.disableHeicUltraHDR as the string 'true'; align our value (was '1'). Drop vendor.camera.aux.packageexcludelist, a LineageOS device template default that is not present in the stock camera configuration.
+---
+ vendor.prop | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/vendor.prop b/vendor.prop
+index 9bc6085..2b41349 100644
+--- a/vendor.prop
++++ b/vendor.prop
+@@ -131,12 +131,11 @@ vendor.c2pa_listener.service.enabled=false
+ vendor.c2pa_listener.service_start=1
+ 
+ # Camera
+-ro.camera.disableHeicUltraHDR=1
++ro.camera.disableHeicUltraHDR=true
+ ro.camera.enableCamera1MaxZsl=1
+ ro.camera.notify_nfc=1
+ ro.camerax.extensions.enabled=true
+ ro.hardware.camera=oemlayer.v2
+-vendor.camera.aux.packageexcludelist=org.telegram.messenger,org.thunderdog.challegram,us.zoom.videomeetings
+ 
+ # Chipset
+ ro.soc.manufacturer=QTI

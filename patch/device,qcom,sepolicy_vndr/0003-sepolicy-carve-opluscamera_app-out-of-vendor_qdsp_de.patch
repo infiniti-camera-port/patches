@@ -1,0 +1,24 @@
+From 637c961c3ef58a3b43799d69bdd5707db28214f9 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Wed, 24 Jun 2026 21:52:54 +0000
+Subject: [PATCH 3/3] sepolicy: carve opluscamera_app out of vendor_qdsp_device
+ neverallow
+
+TEXT/OCR camera mode requires opluscamera_app to open vendor_qdsp_device; carve it out of the vendor_qdsp_device neverallow so the access is permitted.
+---
+ generic/vendor/common/domain.te | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/generic/vendor/common/domain.te b/generic/vendor/common/domain.te
+index 7bdbec8c..6324ef5e 100644
+--- a/generic/vendor/common/domain.te
++++ b/generic/vendor/common/domain.te
+@@ -116,7 +116,7 @@ neverallow { domain
+ userdebug_or_eng(` -vendor_sysmonapp_app_test')
+ } vendor_qdsp_device:chr_file *;
+ neverallow { domain -init -vendor_init - ueventd } vendor_qdsp_device:chr_file ~{r_file_perms};
+-neverallow { appdomain - shell userdebug_or_eng(`-vendor_sysmonapp_app_test') } vendor_qdsp_device:chr_file ~{ioctl read};
++neverallow { appdomain - shell -opluscamera_app userdebug_or_eng(`-vendor_sysmonapp_app_test') } vendor_qdsp_device:chr_file ~{ioctl read};
+ neverallow mediacodec vendor_qdsp_device:chr_file ~{ioctl read};
+ neverallow vendor_unsignedhexlpservice vendor_qdsp_device:chr_file ~{ioctl read};
+ neverallow { domain

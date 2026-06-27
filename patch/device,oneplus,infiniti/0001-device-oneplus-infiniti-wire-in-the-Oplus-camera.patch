@@ -1,0 +1,89 @@
+From 7a56a1b385299ff9b582b2dd47aa4a6df346a70d Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Sun, 14 Jun 2026 01:06:00 -0600
+Subject: [PATCH 1/5] device/oneplus/infiniti: wire in the Oplus camera
+
+Wire up Oplus camera support for infiniti/sm8850:
+- device.mk: inherit-product-if-exists vendor/oplus/camera/opluscamera.mk
+- BoardConfig.mk: BUILD_BROKEN_VENDOR_PROPERTY_NAMESPACE := true
+- extract-files.py: drop the CameraHWConfiguration SW-face-detect-disable fixup
+  (keep it ON for the Oplus camera); add the libsharebuffer_impl ->
+  libutils-stock/libui-stock ABI workaround + libui-stock graphics.common
+  V5->V7 (libsharebuffer_impl NEEDs libui/libutils; both present in the vendor blobs)
+- proprietary-files.txt: extract vendor libutils/libui as -stock (FIX_SONAME)
+---
+ BoardConfig.mk        |  3 +++
+ device.mk             |  3 +++
+ extract-files.py      | 10 ++++++----
+ proprietary-files.txt |  6 +++++-
+ 4 files changed, 17 insertions(+), 5 deletions(-)
+
+diff --git a/BoardConfig.mk b/BoardConfig.mk
+index 440c336..1e0e7b8 100644
+--- a/BoardConfig.mk
++++ b/BoardConfig.mk
+@@ -37,3 +37,6 @@ TARGET_RECOVERY_UI_MARGIN_HEIGHT := 103
+ 
+ # Include the proprietary files BoardConfig.
+ include vendor/oneplus/infiniti/BoardConfigVendor.mk
++
++# Camera (Oplus camera port) — OEM camera sets vendor props outside the standard namespace
++BUILD_BROKEN_VENDOR_PROPERTY_NAMESPACE := true
+diff --git a/device.mk b/device.mk
+index b8b8ae8..8beeb07 100644
+--- a/device.mk
++++ b/device.mk
+@@ -86,3 +86,6 @@ $(call inherit-product, device/oneplus/sm8850-common/common.mk)
+ 
+ # Inherit from the proprietary files makefile.
+ $(call inherit-product, vendor/oneplus/infiniti/infiniti-vendor.mk)
++
++# Camera (Oplus camera port)
++$(call inherit-product-if-exists, vendor/oplus/camera/opluscamera.mk)
+diff --git a/extract-files.py b/extract-files.py
+index 441d9b6..18e0241 100755
+--- a/extract-files.py
++++ b/extract-files.py
+@@ -37,10 +37,6 @@ lib_fixups: lib_fixups_user_type = {
+ }
+ 
+ blob_fixups: blob_fixups_user_type = {
+-    'odm/etc/camera/CameraHWConfiguration.config': blob_fixup()
+-        # Disable face detection AE behaviour
+-        .regex_replace(r'(enableSWfdForThirdCamUnit += )TRUE', r'\1FALSE')
+-        .regex_replace(r'(fdSupport += )TRUE;', r'\1FALSE;'),
+     'odm/etc/init/init.camera_process.rc': blob_fixup()
+         .regex_replace('    delete_recursion', '    #delete_recursion'),
+     (
+@@ -84,6 +80,12 @@ blob_fixups: blob_fixups_user_type = {
+         'vendor/lib64/libcamxdumpinforecorder.so',
+     ): blob_fixup()
+         .replace_needed('libtinyxml2.so', 'libtinyxml2-v36.so'),
++    # Oplus camera: libsharebuffer_impl needs the stock libutils/libui ABI
++    'odm/lib64/libsharebuffer_impl.so': blob_fixup()
++        .replace_needed('libutils.so', 'libutils-stock.so')
++        .replace_needed('libui.so', 'libui-stock.so'),
++    'vendor/lib64/libui-stock.so': blob_fixup()
++        .replace_needed('android.hardware.graphics.common-V5-ndk.so', 'android.hardware.graphics.common-V7-ndk.so'),
+ }  # fmt: skip
+ 
+ module = ExtractUtilsModule(
+diff --git a/proprietary-files.txt b/proprietary-files.txt
+index b4ddd54..68f2d4e 100644
+--- a/proprietary-files.txt
++++ b/proprietary-files.txt
+@@ -1,5 +1,5 @@
+ ## All proprietary files from this list, unless pinned and noted otherwise,
+-## are from OnePlus 15 (CPH2745_16.0.8.300(EX01)).
++## are from OnePlus 15 (CPH2745).
+ 
+ # ACDB
+ odm/etc/acdbdata/FTM/acdb_cal.acdb
+@@ -1856,3 +1856,7 @@ odm/etc/wifi/peach/bdwlan.elf
+ odm/etc/wifi/peach/regdb.bin
+ odm/etc/wifi/peach/regdb_version
+ odm/vendor/etc/wifi/WCNSS_qcom_cfg.ini
++
++# Camera (Oplus camera port): stock libutils/libui ABI for libsharebuffer_impl
++vendor/lib64/libutils.so:vendor/lib64/libutils-stock.so;FIX_SONAME
++vendor/lib64/libui.so:vendor/lib64/libui-stock.so;FIX_SONAME

@@ -1,0 +1,37 @@
+From 16a8516fd6f7bc8e365ef33745a8f5dce59fd29b Mon Sep 17 00:00:00 2001
+From: "vivy@aosp-builder" <vivy@aosp-builder>
+Date: Sun, 14 Jun 2026 17:27:28 +0000
+Subject: [PATCH 2/5] infiniti: device fixes (4K pages, libui-stock
+ graphics.common match V5->V6)
+
+Enable 4K page size; correct the libui-stock graphics.common replace_needed match from V5 (dodge-inherited) to V6. The blob is natively linked against graphics.common-V6-ndk, so the retarget to the ROM's V7 now actually fires -- V5 never matched -> silent no-op -> link break.
+---
+ device.mk        | 4 ++++
+ extract-files.py | 2 +-
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/device.mk b/device.mk
+index 8beeb07..8096756 100644
+--- a/device.mk
++++ b/device.mk
+@@ -89,3 +89,7 @@ $(call inherit-product, vendor/oneplus/infiniti/infiniti-vendor.mk)
+ 
+ # Camera (Oplus camera port)
+ $(call inherit-product-if-exists, vendor/oplus/camera/opluscamera.mk)
++
++# Device is 4K-pages (kernel CONFIG_ARM64_4K_PAGES=y); declare it so check_elf_file
++# does not require the 16K-readiness alignment that older 4K OEM camera JNI libs lack.
++PRODUCT_MAX_PAGE_SIZE_SUPPORTED := 4096
+diff --git a/extract-files.py b/extract-files.py
+index 18e0241..6958ad2 100755
+--- a/extract-files.py
++++ b/extract-files.py
+@@ -85,7 +85,7 @@ blob_fixups: blob_fixups_user_type = {
+         .replace_needed('libutils.so', 'libutils-stock.so')
+         .replace_needed('libui.so', 'libui-stock.so'),
+     'vendor/lib64/libui-stock.so': blob_fixup()
+-        .replace_needed('android.hardware.graphics.common-V5-ndk.so', 'android.hardware.graphics.common-V7-ndk.so'),
++        .replace_needed('android.hardware.graphics.common-V6-ndk.so', 'android.hardware.graphics.common-V7-ndk.so'),
+ }  # fmt: skip
+ 
+ module = ExtractUtilsModule(

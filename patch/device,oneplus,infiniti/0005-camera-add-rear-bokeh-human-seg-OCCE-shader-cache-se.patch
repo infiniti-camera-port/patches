@@ -1,0 +1,50 @@
+From 040aa36e3b563010f7ac678b48f2e4d9bb79f818 Mon Sep 17 00:00:00 2001
+From: vivy <1vivy@tutanota.com>
+Date: Thu, 25 Jun 2026 11:06:14 +0000
+Subject: [PATCH 5/5] camera: add rear-bokeh human-seg + OCCE shader-cache
+ service
+
+- odm/lib64/libAncHumanSegFigureFusion.so -- the rear-portrait AI human-seg
+  engine (the -jni is already in vendor/oplus/camera); its AHardwareBuffer
+  symbol versions are cleared (check_elf) so it loads. Overlay-validated:
+  rear face-retouch/bokeh works on-device with this blob.
+- odm/bin/occe_create + odm/etc/init/occe_create.rc -- the OCCE shader-cache
+  precompiler service (libocce3a/libsaveshaderbin already in tree). Addresses
+  selfie blur/retouch + bokeh-SDK init quality, and most likely also resolves
+  the portrait-on-selfie freeze (precompiling the shaders avoids the runtime
+  shader-compile stall).
+
+sepolicy domain in vendor/oplus/camera.
+---
+ extract-files.py      | 1 +
+ proprietary-files.txt | 5 +++++
+ 2 files changed, 6 insertions(+)
+
+diff --git a/extract-files.py b/extract-files.py
+index de77b14..0f0f55c 100755
+--- a/extract-files.py
++++ b/extract-files.py
+@@ -55,6 +55,7 @@ blob_fixups: blob_fixups_user_type = {
+         'odm/lib64/libOPAlgoCamAiUnifySkin.so',
+         'odm/lib64/libOPAlgoCamFaceBeautyCap.so',
+         'odm/lib64/libaiboost_te.so',
++        'odm/lib64/libAncHumanSegFigureFusion.so',
+     ): blob_fixup()
+         .clear_symbol_version('AHardwareBuffer_acquire')
+         .clear_symbol_version('AHardwareBuffer_allocate')
+diff --git a/proprietary-files.txt b/proprietary-files.txt
+index bcd1552..6ce30b7 100644
+--- a/proprietary-files.txt
++++ b/proprietary-files.txt
+@@ -1090,6 +1090,11 @@ odm/lib64/libremosaic_wrapper.so
+ odm/lib64/libremosaiclib.so
+ odm/lib64/libsat.so
+ odm/lib64/libsaveshaderbin.so
++
++# camera: rear-bokeh AI human-seg engine + OCCE shader-cache precompiler service
++odm/bin/occe_create
++odm/etc/init/occe_create.rc
++odm/lib64/libAncHumanSegFigureFusion.so
+ odm/lib64/libsharebuffer.so
+ odm/lib64/libsharebuffer_impl.so
+ odm/lib64/libssd_det.so

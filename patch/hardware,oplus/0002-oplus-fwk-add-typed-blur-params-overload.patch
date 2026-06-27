@@ -1,0 +1,30 @@
+From 3ed52c401906a406dbeeb30008d89ea0118d06d8 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 16 Jun 2026 13:00:51 -0600
+Subject: [PATCH 2/3] oplus-fwk: add typed blur params overload
+
+---
+ oplus-fwk/src/com/oplus/view/ViewRootManager.java | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/oplus-fwk/src/com/oplus/view/ViewRootManager.java b/oplus-fwk/src/com/oplus/view/ViewRootManager.java
+index 6fee0e6d..70a3860d 100644
+--- a/oplus-fwk/src/com/oplus/view/ViewRootManager.java
++++ b/oplus-fwk/src/com/oplus/view/ViewRootManager.java
+@@ -5,6 +5,7 @@ import android.util.Log;
+ import android.view.View;
+ import android.view.ViewRootImpl;
+ import com.android.internal.graphics.drawable.BackgroundBlurDrawable;
++import com.oplus.graphics.OplusBlurParam;
+ 
+ /* Stub implementation - OplusBlurParam not available in AOSP/LineageOS */
+ public class ViewRootManager {
+@@ -63,4 +64,8 @@ public class ViewRootManager {
+     public void setBlurParams(Object params) {
+         // no-op
+     }
++
++    public void setBlurParams(OplusBlurParam params) {
++        setBlurParams((Object) params);
++    }
+ }

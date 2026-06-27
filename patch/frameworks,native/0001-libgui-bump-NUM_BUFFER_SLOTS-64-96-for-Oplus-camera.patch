@@ -1,0 +1,25 @@
+From ecf9e11d2561d0128b055da7bef71810883b33a1 Mon Sep 17 00:00:00 2001
+From: realahnet <syedmusicrealise@gmail.com>
+Date: Fri, 20 Mar 2026 00:18:22 +0000
+Subject: [PATCH] libgui: bump NUM_BUFFER_SLOTS 64->96 for Oplus camera
+
+The Oplus camera requests more than 64 buffer slots; the stock limit of 64 results in a black viewfinder. Raise it to 96.
+---
+ libs/ui/include/ui/BufferQueueDefs.h | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/libs/ui/include/ui/BufferQueueDefs.h b/libs/ui/include/ui/BufferQueueDefs.h
+index 0fecda9cf1..1002640d58 100644
+--- a/libs/ui/include/ui/BufferQueueDefs.h
++++ b/libs/ui/include/ui/BufferQueueDefs.h
+@@ -22,7 +22,9 @@ namespace android {
+         // BufferQueue will keep track of at most this value of buffers.
+         // Attempts at runtime to increase the number of buffers past this
+         // will fail.
+-        static constexpr int NUM_BUFFER_SLOTS = 64;
++        // Oplus camera requests more than 64 buffer slots; the stock 64 causes a
++        // black viewfinder. Bumped to 96 (pure capacity headroom, low risk).
++        static constexpr int NUM_BUFFER_SLOTS = 96;
+ 
+         enum {
+             // A flag returned by dequeueBuffer when the client needs to call

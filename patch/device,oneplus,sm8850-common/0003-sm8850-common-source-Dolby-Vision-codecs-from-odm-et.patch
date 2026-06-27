@@ -1,0 +1,62 @@
+From f982ee4e816a779f9242bcb30896d8f8f016dba5 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Thu, 25 Jun 2026 14:39:13 -0600
+Subject: [PATCH 3/3] sm8850-common: source Dolby Vision codecs from odm/etc
+ via Include
+
+The canoe media_codecs_{v1,v2,sku1,sku2,sku3}.xml carry no c2.qti.dv nodes;
+the Dolby Vision definitions live in odm/etc/media_codecs_dolby_vision.xml.
+
+Replace the hardcoded inline DV literals with a file reference: remap
+odm/etc/media_codecs_dolby_vision.xml -> vendor/etc/ in proprietary-files.txt,
+and inject <Include href="media_codecs_dolby_vision.xml" /> into all five canoe
+variants. MediaCodecsXmlParser resolves the href relative to the parent dir
+(/vendor/etc/), so the remapped file is found. Tracks stock and survives every
+re-extract, with no hardcoded XML.
+
+Empirically verified on-device via /vendor overlay (c2.qti.dv decoder/encoder
+register from the Include).
+---
+ extract-files.py      | 12 +++++++++++-
+ proprietary-files.txt |  1 +
+ 2 files changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/extract-files.py b/extract-files.py
+index e0e7933..8130c62 100755
+--- a/extract-files.py
++++ b/extract-files.py
+@@ -100,11 +100,21 @@ blob_fixups: blob_fixups_user_type = {
+         .replace_needed('libprotobuf-cpp-lite.so', 'libprotobuf-cpp-lite-21.12.so'),
+     'system_ext/lib64/libwfdnative.so': blob_fixup()
+         .add_needed('libinput_shim.so'),
++    # Inject Dolby Vision codec include into every non-vendor canoe variant (DV nodes live in
++    # odm/etc/media_codecs_dolby_vision.xml, remapped to vendor/etc/ so MediaCodecsXmlParser
++    # can resolve <Include href="..."/> relative to the same /vendor/etc/ search dir).
++    # Empirically verified on device: pushing dolby_vision.xml to /vendor/etc/ and adding
++    # the Include to canoe_v2.xml caused c2.qti.dv.{decoder,decoder.secure,encoder} to appear
++    # in IComponentStore/default after reboot — confirmed via dumpsys.
+     (
++        'vendor/etc/media_codecs_canoe_sku1.xml',
++        'vendor/etc/media_codecs_canoe_sku2.xml',
+         'vendor/etc/media_codecs_canoe_sku3.xml',
++        'vendor/etc/media_codecs_canoe_v1.xml',
+         'vendor/etc/media_codecs_canoe_v2.xml',
+     ): blob_fixup()
+-        .regex_replace('.*media_codecs_(google_audio|google_c2|google_telephony|google_video|vendor_audio).*\n', ''),
++        .regex_replace('.*media_codecs_(google_audio|google_c2|google_telephony|google_video|vendor_audio).*\n', '')
++        .regex_replace(r'([ \t]*</MediaCodecs>)', r'    <Include href="media_codecs_dolby_vision.xml" />\n\1'),
+     (
+         'vendor/lib64/hw/android.hardware.bluetooth.audio_sw.so',
+         'vendor/lib64/hw/libaudiocorehal.default.so',
+diff --git a/proprietary-files.txt b/proprietary-files.txt
+index b9e1856..8d44579 100644
+--- a/proprietary-files.txt
++++ b/proprietary-files.txt
+@@ -565,6 +565,7 @@ vendor/etc/media_codecs_canoe_v1.xml
+ vendor/etc/media_codecs_canoe_v1_vendor.xml
+ vendor/etc/media_codecs_canoe_v2.xml
+ vendor/etc/media_codecs_canoe_v2_vendor.xml
++odm/etc/media_codecs_dolby_vision.xml:vendor/etc/media_codecs_dolby_vision.xml
+ vendor/etc/media_codecs_performance_canoe_sku1.xml
+ vendor/etc/media_codecs_performance_canoe_sku1_vendor.xml
+ vendor/etc/media_codecs_performance_canoe_sku2.xml

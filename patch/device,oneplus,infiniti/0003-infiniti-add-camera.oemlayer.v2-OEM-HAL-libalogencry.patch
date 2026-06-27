@@ -1,0 +1,29 @@
+From aac4bf64943f294e100697553f16b17c5a51f101 Mon Sep 17 00:00:00 2001
+From: "vivy@aosp-builder" <vivy@aosp-builder>
+Date: Sun, 14 Jun 2026 19:05:49 +0000
+Subject: [PATCH 3/5] infiniti: add camera.oemlayer.v2 (OEM HAL) +
+ libalogencrypt to proprietary-files
+
+The makefile regen rebuilt Android.bp/infiniti-vendor.mk from
+proprietary-files.txt, which silently dropped the hand-added
+camera.oemlayer.v2 (the OEM camera HAL) + libalogencrypt modules
+-> no camera HAL shipped. List them here so regen keeps them.
+camera.oemlayer.v2.so exports HMI + OemLayer::process_capture_request.
+---
+ proprietary-files.txt | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/proprietary-files.txt b/proprietary-files.txt
+index 68f2d4e..bcd1552 100644
+--- a/proprietary-files.txt
++++ b/proprietary-files.txt
+@@ -952,6 +952,9 @@ odm/lib64/camera.oemlayer.adapter.so
+ odm/lib64/camera.oemlayer.healthmonitor.so
+ odm/lib64/camera.oemlayer.logger.so
+ odm/lib64/camera.oemlayer.uilayer.so
++odm/lib64/hw/camera.oemlayer.v2.so
++odm/lib/libalogencrypt.so
++odm/lib64/libalogencrypt.so
+ odm/lib64/com.oplus.mcx.linearmapper.so
+ odm/lib64/com.oplus.node.preview.v2.so
+ odm/lib64/lib2DSlender.so

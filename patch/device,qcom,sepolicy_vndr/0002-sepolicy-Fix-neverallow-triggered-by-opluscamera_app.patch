@@ -1,0 +1,25 @@
+From f3f1816886654f9b8231712a6ce36121b83ffc23 Mon Sep 17 00:00:00 2001
+From: spkal01 <kalligeross@gmail.com>
+Date: Sun, 31 May 2026 17:46:41 +0300
+Subject: [PATCH 2/3] sepolicy: Fix neverallow triggered by opluscamera_app
+
+Change-Id: Ifd682cad98e67cacb4b16ff2468f975335036e9d
+---
+ generic/vendor/common/hal_camera.te | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/generic/vendor/common/hal_camera.te b/generic/vendor/common/hal_camera.te
+index 032dc356..c87ecd21 100644
+--- a/generic/vendor/common/hal_camera.te
++++ b/generic/vendor/common/hal_camera.te
+@@ -89,7 +89,9 @@ userdebug_or_eng(`
+ binder_use(hal_camera_default)
+ 
+ # Offline camera service access
+-hal_attribute_service(hal_camera, vendor_hal_offlinecamera_service)
++add_service(hal_camera_server, vendor_hal_offlinecamera_service)
++neverallow { domain -hal_camera_server } vendor_hal_offlinecamera_service:service_manager add;
++neverallow { domain -hal_camera_client -hal_camera_server -opluscamera_app -traceur_app -atrace -shell -system_app } vendor_hal_offlinecamera_service:service_manager find;
+ 
+ # AON AIDL service access
+ hal_attribute_service(hal_camera, vendor_hal_camera_aon_service)
