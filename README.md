@@ -1,29 +1,25 @@
 # infiniti camera patches
 
-Device-side patches for the OnePlus 15 (infiniti) Oplus camera port — a source for
-applying the camera stack onto a Custom ROM.
+Device-side patches for the OnePlus 15 (infiniti) Oplus camera port — apply the camera stack onto a custom ROM.
 
 ## Apply
 
-From your Android source root:
-
 ```
-python3 patch/apply-patches.py
+python3 patch/apply-patches.py        # from your Android source root
 ```
+Toggle the sets (space), run (enter). Each subfolder maps to a source path — `device,oneplus,infiniti` → `device/oneplus/infiniti`.
 
-Toggle the patch sets to apply (space), then run (enter). Each subfolder maps to a
-source path — e.g. `device,oneplus,infiniti` → `device/oneplus/infiniti`.
+## Base prerequisites (read first)
 
-## Note
+- **frameworks/av** must provide generic camera **vendor-tag handling matched by camera package name** —
+  present in crDroid-class ROMs, **absent in stock LineageOS**. We pin `frameworks/av` to the OEM **A16**
+  fork (already has it); on a LineageOS-av base, port that in before expecting the Oplus camera to open.
+- **vendor/oplus/camera** — don't hand-apply. Just `repo sync` `infiniti-camera-port/vendor_oplus_camera`;
+  it's effectively a diff on top of **`dodge-camera-port/vendor_oplus_camera`** (force-set to the dodge tip
+  + a curated camera series). Its `camera/*` blob tree is extract-generated, not committed.
 
-Assumes an appropriate base. Some camera framework prerequisites are not adopted by
-every ROM; ensure your base provides them before applying.
+## los-fix-build-patches/ — base build fixes, NOT the camera port
 
-## `los-fix-build-patches/` — base build fixes, NOT the camera port
-
-[`los-fix-build-patches/`](los-fix-build-patches) holds fixes that only make a LineageOS 23.2 / Android 16
-infiniti tree **compile** under our branch composition — the legacy OMX AC-4 (codec2-era) block, the
-Pixelworks/iris display libs, a CAF HAL1 constant, and a `protobuf_vendorcompat` prebuilt restore.
-
-They are deliberately kept **out of `patch/`**: none of them are camera-port effort — they are
-base/OEM-inherited gaps and a sync artifact. See that folder's README for the per-patch rationale.
+Fixes that only make a LineageOS 23.2 / Android 16 infiniti tree *compile* (legacy OMX AC-4, Pixelworks/iris
+display, a CAF HAL1 constant, a `protobuf_vendorcompat` restore). Kept out of `patch/` on purpose — not
+camera-port effort. See [`los-fix-build-patches/`](los-fix-build-patches).
