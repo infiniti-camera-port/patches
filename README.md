@@ -11,12 +11,20 @@ Toggle the sets (space), run (enter). Each subfolder maps to a source path — `
 
 ## Base prerequisites (read first)
 
-- **frameworks/av** must provide generic camera **vendor-tag handling matched by camera package name** —
-  present in crDroid-class ROMs, **absent in stock LineageOS**. We pin `frameworks/av` to the OEM **A16**
-  fork (already has it); on a LineageOS-av base, port that in before expecting the Oplus camera to open.
-- **vendor/oplus/camera** — don't hand-apply. Just `repo sync` `infiniti-camera-port/vendor_oplus_camera`;
-  it's effectively a diff on top of **`dodge-camera-port/vendor_oplus_camera`** (force-set to the dodge tip
-  + a curated camera series). Its `camera/*` blob tree is extract-generated, not committed.
+Your **frameworks/** must carry the camera-side bits the Oplus stack assumes — present in crDroid-class ROMs,
+thin or absent in stock LineageOS. We satisfy them by pinning `frameworks/av` to the OEM **A16** fork and
+carrying the `native`/`base` deltas; on a different base, port the equivalents first:
+
+- **frameworks/av** — generic vendor-tag handling matched by **camera package name**; OnePlus camera
+  extension (zoom) + CameraServiceExt; the `'oplu'` HDR user-data metadata atom in MPEG4Writer (HDR video);
+  Y16 buffer-dimension bypass.
+- **frameworks/native** — `NUM_BUFFER_SLOTS` bumped (we use 96; the default 64 starves the camera);
+  Qualcomm vendor-YUV recognition in `formatIsYuv`; blur-region handling (portrait/bokeh).
+- **frameworks/base** — `AHardwareBuffer` fixes for the OEM camera (not a no-op repo).
+
+**vendor/oplus/camera** — don't hand-apply. Just `repo sync` `infiniti-camera-port/vendor_oplus_camera`;
+it's a diff on top of **`dodge-camera-port/vendor_oplus_camera`** (dodge tip + a curated camera series), and
+its `camera/*` blob tree is extract-generated, not committed.
 
 ## los-fix-build-patches/ — base build fixes, NOT the camera port
 
