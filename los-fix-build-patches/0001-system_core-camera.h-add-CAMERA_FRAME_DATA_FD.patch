@@ -1,0 +1,20 @@
+diff --git a/libsystem/include/system/camera.h b/libsystem/include/system/camera.h
+index 2ca90c395..12c04ebe7 100644
+--- a/libsystem/include/system/camera.h
++++ b/libsystem/include/system/camera.h
+@@ -91,6 +91,15 @@ enum {
+     CAMERA_MSG_ALL_MSGS = 0xFFFF
+ };
+ 
++/** ext1 value in dataCallback for CAMERA_MSG_PREVIEW_FRAME: how the frame is delivered.
++ *  CAF/Qualcomm preview-frame-fd extension (frameworks/av camera/ICameraClient.cpp,
++ *  CodeAurora 969d880e03 "Camera: Add support for preview frame fd"). Provided by the
++ *  OEM system/core in CAF/A16 trees; absent from the LineageOS base, so declared here. */
++enum {
++    CAMERA_FRAME_DATA_FD  = 0x100,  // frame delivered as a file descriptor (ext2 = fd)
++    CAMERA_FRAME_DATA_BUF = 0x101,  // frame delivered in a memory buffer
++};
++
+ /** cmdType in sendCommand functions */
+ enum {
+     CAMERA_CMD_START_SMOOTH_ZOOM = 1,

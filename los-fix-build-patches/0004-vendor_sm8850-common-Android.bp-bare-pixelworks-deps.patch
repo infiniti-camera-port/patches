@@ -1,0 +1,113 @@
+diff --git a/Android.bp b/Android.bp
+index 5dd2c36..d1c256f 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -7330,8 +7330,8 @@ cc_prebuilt_library_shared {
+                 "libhidlbase",
+                 "libbase",
+                 "libbinder_ndk",
+-                "vendor.pixelworks.hardware.feature@1.0_vendor",
+-                "vendor.pixelworks.hardware.feature@1.1_vendor",
++                "vendor.pixelworks.hardware.feature@1.0",
++                "vendor.pixelworks.hardware.feature@1.1",
+                 "vendor.pixelworks.hardware.feature@1.2",
+                 "libc++",
+                 "libc",
+@@ -7365,9 +7365,9 @@ cc_prebuilt_library_shared {
+                 "libutils",
+                 "libcutils",
+                 "libhidlbase",
+-                "vendor.pixelworks.hardware.display@1.0_vendor",
+-                "vendor.pixelworks.hardware.display@1.1_vendor",
+-                "vendor.pixelworks.hardware.display@1.2_vendor",
++                "vendor.pixelworks.hardware.display@1.0",
++                "vendor.pixelworks.hardware.display@1.1",
++                "vendor.pixelworks.hardware.display@1.2",
+                 "libc++",
+                 "libc",
+                 "libm",
+@@ -7395,7 +7395,7 @@ cc_prebuilt_library_shared {
+                 "liblog",
+                 "libutils",
+                 "libcutils",
+-                "libpwirisfeature_vendor",
++                "libpwirisfeature",
+                 "libbase",
+                 "libbinder_ndk",
+                 "android.hardware.graphics.common-V7-ndk",
+@@ -10053,7 +10053,7 @@ cc_prebuilt_library_shared {
+                 "proprietary/vendor/lib64/libsdedrm.so",
+             ],
+             shared_libs: [
+-                "libpwirisfeature_vendor",
++                "libpwirisfeature",
+                 "liblog",
+                 "libcutils",
+                 "libutils",
+@@ -10204,7 +10204,7 @@ cc_prebuilt_library_shared {
+                 "libpwirishardware_ext",
+                 "vendor.pixelworks.hardware.display-V3-ndk",
+                 "libpwirishalwrapper",
+-                "libpwirisfeature_vendor",
++                "libpwirisfeature",
+                 "liblog",
+                 "libcutils",
+                 "libutils",
+@@ -10252,7 +10252,7 @@ cc_prebuilt_library_shared {
+             ],
+             shared_libs: [
+                 "libbase",
+-                "libpwirisfeature_vendor",
++                "libpwirisfeature",
+                 "libpwirishal",
+                 "liblog",
+                 "libcutils",
+@@ -10292,7 +10292,7 @@ cc_prebuilt_library_shared {
+                 "proprietary/vendor/lib64/libsdmdal.so",
+             ],
+             shared_libs: [
+-                "libpwirisfeature_vendor",
++                "libpwirisfeature",
+                 "liblog",
+                 "libcutils",
+                 "libutils",
+@@ -13710,7 +13710,7 @@ cc_prebuilt_library_shared {
+                 "proprietary/vendor/lib64/vendor.pixelworks.hardware.display@1.1.so",
+             ],
+             shared_libs: [
+-                "vendor.pixelworks.hardware.display@1.0_vendor",
++                "vendor.pixelworks.hardware.display@1.0",
+                 "libhidlbase",
+                 "liblog",
+                 "libutils",
+@@ -13739,8 +13739,8 @@ cc_prebuilt_library_shared {
+                 "proprietary/vendor/lib64/vendor.pixelworks.hardware.display@1.2.so",
+             ],
+             shared_libs: [
+-                "vendor.pixelworks.hardware.display@1.0_vendor",
+-                "vendor.pixelworks.hardware.display@1.1_vendor",
++                "vendor.pixelworks.hardware.display@1.0",
++                "vendor.pixelworks.hardware.display@1.1",
+                 "libhidlbase",
+                 "liblog",
+                 "libutils",
+@@ -13822,7 +13822,7 @@ cc_prebuilt_library_shared {
+                 "proprietary/vendor/lib64/vendor.pixelworks.hardware.feature@1.1.so",
+             ],
+             shared_libs: [
+-                "vendor.pixelworks.hardware.feature@1.0_vendor",
++                "vendor.pixelworks.hardware.feature@1.0",
+                 "libhidlbase",
+                 "liblog",
+                 "libutils",
+@@ -13851,8 +13851,8 @@ cc_prebuilt_library_shared {
+                 "proprietary/vendor/lib64/vendor.pixelworks.hardware.feature@1.2.so",
+             ],
+             shared_libs: [
+-                "vendor.pixelworks.hardware.feature@1.0_vendor",
+-                "vendor.pixelworks.hardware.feature@1.1_vendor",
++                "vendor.pixelworks.hardware.feature@1.0",
++                "vendor.pixelworks.hardware.feature@1.1",
+                 "libhidlbase",
+                 "liblog",
+                 "libutils",

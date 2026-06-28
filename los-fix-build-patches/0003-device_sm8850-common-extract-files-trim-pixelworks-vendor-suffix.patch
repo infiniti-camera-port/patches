@@ -1,0 +1,18 @@
+diff --git a/extract-files.py b/extract-files.py
+index 8130c62..95c8d7d 100755
+--- a/extract-files.py
++++ b/extract-files.py
+@@ -42,13 +42,7 @@ lib_fixups: lib_fixups_user_type = {
+         'com.qualcomm.qti.dpm.api@1.0',
+         'libosensenativeproxy_client',
+         'libPanelChaplin',
+-        'libpwirisfeature',
+         'vendor.oplus.hardware.displaycolorfeature-V1-ndk',
+-        'vendor.pixelworks.hardware.display@1.0',
+-        'vendor.pixelworks.hardware.display@1.1',
+-        'vendor.pixelworks.hardware.display@1.2',
+-        'vendor.pixelworks.hardware.feature@1.0',
+-        'vendor.pixelworks.hardware.feature@1.1',
+         'vendor.qti.ImsRtpService-V2-ndk',
+         'vendor.qti.diaghal-V1-ndk',
+         'vendor.qti.hardware.dpmaidlservice-V1-ndk',
