@@ -8,6 +8,17 @@ The camera-port patch set is in [`../patch/`](../patch) and is independent of ev
 They live here only so the build is reproducible and the attribution is unmistakable: nothing in this
 folder is camera work — it's base/OEM-inherited gaps and a sync artifact.
 
+## Why a standalone patchset (and NOT committed into the org repos)
+
+These are deliberately kept as an overlay and **not** committed into the `infiniti-camera-port` source
+repos — to keep them out of camera-patch regeneration. The camera patches in `../patch/` are produced
+with `git format-patch <camera-base>..HEAD` per repo; that range captures *every* commit on the branch.
+If e.g. 0003 were committed onto `device/oneplus/sm8850-common`, the next regen would sweep that
+Pixelworks/iris fix into `patch/device,oneplus,sm8850-common/` as a bogus "camera" patch. Keeping the
+build fixes here means the org camera repos stay pristine and camera-patch regen yields *only* camera
+commits. (0004 would also be clobbered by the next extract anyway — the real fix is 0003 in
+`extract-files.py`.) Apply this overlay separately, after the camera stack.
+
 ## Patches
 
 | # | apply from (repo) | what it does | why it is NOT camera-port |
