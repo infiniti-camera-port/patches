@@ -1,0 +1,74 @@
+From b46ef1df4e226fa03f76b8ecff35e7f2654c2967 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 30 Jun 2026 00:01:22 -0600
+Subject: [PATCH 14/24] =?UTF-8?q?[WIP]=20oplus-fwk:=20report=20the=20real?=
+ =?UTF-8?q?=20OplusOS/OS16=20version=20in=20OplusBuild=20=E2=80=94=20conve?=
+ =?UTF-8?q?rge=20on=20OOS=20baseline=20(stub=20was=20defaulting=20to=20the?=
+ =?UTF-8?q?=20old=20V12.1=20/=20SDK=2024)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The LineageOS oplus-fwk OplusBuild shim hardcodes VERSION.RELEASE="V12.1"
+and resolves SDK_VERSION=24 from the legacy VERSIONS[] table with no
+system-property read, so a genuine OplusOS 16 device (ro.build.version.oplus.api=38,
+ro.build.version.oplusrom=V16.1.0) reports ColorOS 12. That version-gates off the
+OS15/OS16 OEM feature surface -- most visibly the gallery OLive motion-photo
+playback, whose PhotoOliveViewModel gates feature_is_support_olive on
+OplusBuild.SDK_VERSION >= 33.
+
+Mirror the stock OEM OplusBuild (OOS 16.0.8 oplus-framework.jar): read
+ro.build.version.oplus.api for SDK_VERSION (returned only when > 33, else the legacy
+table fallback), ro.build.version.oplusrom for RELEASE, and
+ro.build.version.oplus.sub_api for SDK_SUB_VERSION. This yields the OEM-identical
+runtime values SDK_VERSION=38 / RELEASE="V16.1.0" / SDK_SUB_VERSION=47.
+
+Note: honestly reporting OS16 activates OS16 code paths that call OEM framework
+classes the port has not yet restored (e.g. com.oplus.wrapper.hardware.camera2.*,
+com.oplus.util.OplusPlatformLevelUtils); those must be ported alongside this change
+to avoid NoClassDefFoundError in the camera and gallery. This commit is the
+version-reporting half.
+
+(cherry picked from commit 0f54be9d311cfe93c6bd49b04ed554bd2f65cc89)
+
+Ledger: hardware_oplus.md Accepted Group C row 3 (0f54be9d)
+Stub-matrix: task-9-stub-inventory.md row K08 — consumer: OEM apps gate features on OplusBuild version, known x4 lane APKs (dex-scan); location: modifies base oplus-fwk OplusBuild.java (base tops out V12.1/V12.2, SDK_SUB_VERSION 19)
+Change-Id: I65c41ae7741929c0bf478c45fe1bad3d719b7a9a
+---
+ oplus-fwk/src/com/oplus/os/OplusBuild.java | 10 +++++++---
+ 1 file changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/oplus-fwk/src/com/oplus/os/OplusBuild.java b/oplus-fwk/src/com/oplus/os/OplusBuild.java
+index 98063290..5713459b 100644
+--- a/oplus-fwk/src/com/oplus/os/OplusBuild.java
++++ b/oplus-fwk/src/com/oplus/os/OplusBuild.java
+@@ -36,12 +36,16 @@ public class OplusBuild {
+     private static final String[] VERSIONS = {"V1.0", "V1.2", "V1.4", "V2.0", "V2.1", "V3.0", "V3.1", "V3.2", "V5.0", "V5.1", "V5.2", "V6.0", "V6.1", "V6.2", "V6.7", "V7", "V7.1", "V7.2", "V11", "V11.1", "V11.2", "V11.3", "V12", "V12.1", "V12.2", null};
+ 
+     public static class VERSION {
+-        public static final String RELEASE = "V12.1";
++        public static final String RELEASE = SystemProperties.get("ro.build.version.oplusrom", "V12.1");
+         public static final int SDK_VERSION = getOplusOSVERSION();
+-        public static final int SDK_SUB_VERSION = 19;
++        public static final int SDK_SUB_VERSION = SystemProperties.getInt("ro.build.version.oplus.sub_api", 19);
+     }
+ 
+     public static int getOplusOSVERSION() {
++        int apiVersion = SystemProperties.getInt("ro.build.version.oplus.api", 0);
++        if (apiVersion > 33) {
++            return apiVersion;
++        }
+         for (int i = VERSIONS.length - 2; i >= 0; i--) {
+             if (!TextUtils.isEmpty(VERSION.RELEASE) && VERSION.RELEASE.startsWith(VERSIONS[i])) {
+                 return i + 1;
+@@ -81,6 +85,6 @@ public class OplusBuild {
+     }
+ 
+     public static String getVersionProp(String property) {
+-        return "V12.1";
++        return SystemProperties.get("ro.build.version.oplusrom", "V12.1");
+     }
+ }
+-- 
+2.50.1 (Apple Git-155)
+

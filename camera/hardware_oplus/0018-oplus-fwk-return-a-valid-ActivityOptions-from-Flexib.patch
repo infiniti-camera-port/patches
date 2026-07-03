@@ -1,0 +1,75 @@
+From 5c7e78b64a41ae41a3fadae62598f418e8224efa Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Wed, 1 Jul 2026 22:39:54 -0600
+Subject: [PATCH 18/24] oplus-fwk: return a valid ActivityOptions from
+ FlexibleWindowManager.setExtraBundle
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The stub returned the caller's raw extra Bundle unchanged. On true OS16
+(getOplusOSVERSION() >= 29) OppoGallery2's router (Starter) takes the
+flexible-window branch and passes the result of setExtraBundle() straight to
+startActivity() as the launch options. The raw Bundle carries flexible-window
+keys (androidx.activity.StartFlexibleActivity / .FlexiblePosition /
+flexible.newtask.fullscreen) rather than a valid ActivityOptions parcel, so
+every router:// launch that hits this branch (Gallery Settings, and other
+in-app navigations) was silently dropped — no activity, no crash.
+
+Reverse-engineered the OEM implementation from the OOS16 oplus-framework.jar:
+
+    if (options == null || exBundle == null) return null;
+    options.setExtraBundle(exBundle);   // OEM-only ActivityOptions API (absent from AOSP)
+    return options.toBundle();
+
+The device is never in a flexible window, so the embedded extra is irrelevant;
+mirror the OEM null-guard and return the standard options bundle for a normal
+launch. Confirmed on-device via an oplus-api A/B: at api<29 (plain-launch path)
+Gallery Settings works; at api=38 (this flexible branch) it failed until this
+fix. Blast radius is all OS16 flexible-window router launches, not just Settings.
+
+(cherry picked from commit 09c5d86c6cee77b1c650bfe686ec5d003ef716bf)
+
+Ledger: hardware_oplus.md Accepted Group C row 7 (09c5d86c)
+Stub-matrix: task-9-stub-inventory.md row K09 — consumer: OEM Settings/app-launch path (logcat-history, v3.4 series); location: member fix on FlexibleWindowManager (M11 class) in the boot jar
+Change-Id: Ib49640bbf13194193550b749bfb73c32c6a45571
+---
+ .../flexiblewindow/FlexibleWindowManager.java | 23 ++++++++++++++++---
+ 1 file changed, 20 insertions(+), 3 deletions(-)
+
+diff --git a/oplus-fwk/src/com/oplus/flexiblewindow/FlexibleWindowManager.java b/oplus-fwk/src/com/oplus/flexiblewindow/FlexibleWindowManager.java
+index ae411e21..35216606 100644
+--- a/oplus-fwk/src/com/oplus/flexiblewindow/FlexibleWindowManager.java
++++ b/oplus-fwk/src/com/oplus/flexiblewindow/FlexibleWindowManager.java
+@@ -56,8 +56,25 @@ public class FlexibleWindowManager {
+         // no-op: no embedded container tasks exist on this port.
+     }
+ 
+-    public Bundle setExtraBundle(ActivityOptions options, Bundle bundle) {
+-        // No flexible-window extras to inject; hand the caller's bundle back unchanged.
+-        return bundle;
++    public Bundle setExtraBundle(ActivityOptions options, Bundle exBundle) {
++        // OEM-faithful (RE'd from OOS16 oplus-framework.jar): return a proper ActivityOptions
++        // launch bundle, NOT the caller's raw flexible-extra bundle. The OEM does
++        //   if (options == null || exBundle == null) return null;
++        //   options.setExtraBundle(exBundle); return options.toBundle();
++        // where ActivityOptions.setExtraBundle(Bundle) is an OEM-only API (absent from AOSP) that
++        // embeds the flexible extras. On this port the device is never in a flexible window, so
++        // that extra is irrelevant; we mirror the OEM null-guard and hand back the standard
++        // options bundle -> a normal activity launch.
++        //
++        // The old stub returned exBundle unchanged, feeding startActivity a plain bundle carrying
++        // androidx.activity.StartFlexibleActivity / .FlexiblePosition / flexible.newtask.fullscreen
++        // keys instead of a valid ActivityOptions parcel. On true OS16 (getOplusOSVERSION() >= 29)
++        // Gallery's router takes the flexible-window branch through here, so every router:// launch
++        // (Settings, etc.) was silently dropped. Confirmed on-device: api<29 (plain path) works,
++        // api=38 (this branch) failed until this fix.
++        if (options == null || exBundle == null) {
++            return null;
++        }
++        return options.toBundle();
+     }
+ }
+-- 
+2.50.1 (Apple Git-155)
+

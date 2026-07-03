@@ -1,0 +1,103 @@
+From 07552973212ea0d50f7eea6b3b341971a8b7be77 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Thu, 2 Jul 2026 17:37:49 -0600
+Subject: [PATCH 15/19] camera: document the dropped private-space set +
+ future-work TODO
+
+Record the disposition of the OP15InfinityX private-space / security app
+cluster in docs/PRIVATE_SPACE.md: the three dropped priv-apps
+(UMS/PhoneManager/OplusExSystemService) and why they are
+private-space/security bloat (not AI Unit, not load-bearing for the
+camera stack), the four dropped siblings
+(SafeCenter/FileEncryption/FileManager/SecurityPermission) per the
+maximal-de-bloat decision, the note that OplusCamera's Pantanal/UMS
+FluidCard hooks fail closed benignly, the kept cryptoeng App-Lock HAL
+payload, and a TODO pointing at the future stub-surface blueprint if
+Private Safe is ever wanted.
+
+Marker only: no apps re-added, no stubs implemented. The stub-based
+accommodation was deliberately abandoned.
+
+Change-Id: I1595515dcf073d07a28a06da1e4a45bf5c34edf2
+---
+ docs/PRIVATE_SPACE.md | 68 +++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 68 insertions(+)
+ create mode 100644 docs/PRIVATE_SPACE.md
+
+diff --git a/docs/PRIVATE_SPACE.md b/docs/PRIVATE_SPACE.md
+new file mode 100644
+index 0000000..6fc382e
+--- /dev/null
++++ b/docs/PRIVATE_SPACE.md
+@@ -0,0 +1,68 @@
++# Private Space / OP15InfinityX priv-app set — status and future work
++
++**Status:** the OP15InfinityX "private-space" / security app cluster is **fully dropped**. No Private
++Safe, no Security Centre, no OEM file manager — maximal de-bloat (user decision, 2026-07-03). Nothing is
++stubbed; the stub-based accommodation was considered and deliberately abandoned. This file is the
++marker + future-work note. It documents intent only; it re-adds no apps and implements no stubs.
++
++Full provenance (origin commits, manifest surfaces, per-app consumer analysis, verification method)
++lives in the project evidence doc `privspace-apps-provenance.md` — treat that as the authoritative
++reference; this file is the in-tree pointer.
++
++## First drop (v3.5) — three priv-apps
++
++The private-space port (`1fa1bf1 camera: port OP15InfinityX private-space support`) pulled OOS apps into
++the build. Three of them are `system_ext` **priv-apps** that request platform privileged permissions
++with no allowlist entry. Under `ro.control_privapp_permissions=enforce` (LOS userdebug) the privapp
++check turns each into an `IllegalStateException` at `AppIdPermissionPolicy.onSystemReady` →
++`system_server` death → hard bootloop. They are OnePlus/OOS private-space + security **bloat**, not part
++of AI Unit and not load-bearing for the camera stack, so they were dropped (`5585a11`) rather than
++allowlisted (the enforce gate only fires for packages that are present):
++
++- **com.oplus.pantanal.ums** (UMS) — Pantanal "user model service" / decision hub.
++- **com.oplus.phonemanager** (PhoneManager) — OOS cleanup/security app.
++- **com.oplus.exsystemservice** (OplusExSystemService) — OEM extended-system-service backend.
++
++Absence tolerance proven: v3.3 shipped and ran OplusCamera/Gallery without any of these; the OOS-derived
++code paths that reference them hit **caught** `NameNotFoundException` / missing-provider fallbacks and
++continue. OplusCamera's Pantanal/UMS FluidCard hooks fail closed benignly.
++
++## Second drop (v4.1) — the four remaining siblings
++
++The user chose maximal de-bloat: drop the whole remaining security/private-space cluster. All four are
++removed (apk extract entry + fixups + allowlist/permission-definer surface); the cryptoeng App-Lock HAL
++payload is **kept** because the FIDO/cryptoeng device-attestation path (AI-editor cloud) now depends on
++it, and `libOplusSecurity.so` is **kept** (base camera blob from the initial port, not part of this
++cluster).
++
++- **com.oplus.safecenter** (SafeCenter / Security Centre) — `system_ext/app` (not a priv-app). Crashed
++  on camera launch (`NoSuchMethodError` in its own `SecureSafeApp.onCreate` against our oplus-fwk stub).
++  The camera queries its provider `content://com.oplus.provider.SafeProvider` (`limit_use_app` check for
++  the gallery package) from `GalleryHelper`; that call is **null-checked and wrapped in try/catch** →
++  provider absent → null → default path. Fails closed, verified at bytecode. Dropping it removes the
++  crash entirely (no oplus-fwk stub needed).
++- **com.oplus.encryption** (FileEncryption) — `system_ext/priv-app`; the Private Safe vault. Its one
++  platform priv perm (`WRITE_SECURE_SETTINGS`) allowlist block is removed with the app (clean; the
++  enforce gate only fires for present packages). Gallery/FileManager "move to Private Safe" menus degrade
++  (v3.3-tolerated).
++- **com.oneplus.filemanager** (FileManager) — `system_ext/app` (not a priv-app → zero allowlist/bootloop
++  exposure). Functional duplicate of the LOS file manager.
++- **com.oplus.securitypermission** (SecurityPermission) — `system_ext/app` (not a priv-app). Its port
++  fixup injected the `com.oplus.permission.safe.*` signature-permission family so OEM cross-app guards
++  resolved; dropping it un-defines that family → guarded providers become deny-all to external callers =
++  the v3.3 semantics (no definer shipped then either), proven benign. Its two genuinely-defined perms
++  (`com.oplus.permission.SECURITY_ACTION`, `com.oplus.permission.safe.SMS.BROADCAST`) have no consumer in
++  the kept stack.
++
++No sepolicy or hidden-api change is required for the second drop (no cluster-specific types; the four
++apps carry no hidden-api whitelist entries). The oplus-fwk `OplusMultiAppManager`/`OPlusAccessControlManager`
++stub accommodation for SafeCenter was reverted — no kept app references those members.
++
++## TODO — future "Private Safe" accommodation (deferred, DO NOT build here)
++
++If Private Safe / the OplusCam private-space integration is ever wanted **without** shipping the OEM
++bloat backends, the intended path is a minimal **stub surface**, not re-adding the dropped apks. The full
++blueprint is captured in `privspace-apps-provenance.md` ("Future: stub-based accommodation"): a
++Pantanal/UMS empty-provider stub, an oplus-permission-definer stub for the `com.oplus.permission.safe.*`
++family (or smali no-ops in the kept consumers), and — only if a kept app ever hard-depends on it — a
++SafeCenter `SafeProvider` empty-cursor stub. Until then: no stubs, no re-added apks.
+-- 
+2.50.1 (Apple Git-155)
+

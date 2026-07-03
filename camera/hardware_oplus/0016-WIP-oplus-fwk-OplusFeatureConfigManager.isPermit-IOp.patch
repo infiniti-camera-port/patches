@@ -1,0 +1,120 @@
+From f26b2621241f3f1e5c3a31164057fa68b2c8b4b5 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Wed, 1 Jul 2026 18:15:50 +0000
+Subject: [PATCH 16/24] =?UTF-8?q?[WIP]=20oplus-fwk:=20OplusFeatureConfigMa?=
+ =?UTF-8?q?nager.isPermit=20+=20IOplusFeatureConfigManager$FeatureID=20?=
+ =?UTF-8?q?=E2=80=94=20OOS-baseline=20app-feature=20permit=20(returns=20tr?=
+ =?UTF-8?q?ue,=20matching=20the=20OEM=20permit)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+(cherry picked from commit 5d3408321db92e738d35f815b5efc236b2209b82)
+
+Ledger: hardware_oplus.md Accepted Group C row 5 (5d340832)
+Stub-matrix: task-9-stub-inventory.md row K01 — consumer: OplusFeatureConfigManager known x4 lane APKs (dex-scan) + the v3.1/v3.2 bootloop killer (logcat-history, oplus-fwk stub-closure model); location: oplus-fwk boot jar (git grep isPermit on crDroid base = 0 hits); pairs with dbbebac8 (K03) in this same series
+Change-Id: I653b0d7c9d7f1080930682de6375ddecb834da33
+---
+ .../content/IOplusFeatureConfigManager.java   | 76 +++++++++++++++++++
+ .../content/OplusFeatureConfigManager.java    |  4 +
+ 2 files changed, 80 insertions(+)
+ create mode 100644 oplus-fwk/src/com/oplus/content/IOplusFeatureConfigManager.java
+
+diff --git a/oplus-fwk/src/com/oplus/content/IOplusFeatureConfigManager.java b/oplus-fwk/src/com/oplus/content/IOplusFeatureConfigManager.java
+new file mode 100644
+index 00000000..9310c3a1
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/content/IOplusFeatureConfigManager.java
+@@ -0,0 +1,76 @@
++package com.oplus.content;
++
++import android.os.RemoteException;
++
++import java.util.List;
++
++/**
++ * Stub of the OEM com.oplus.content.IOplusFeatureConfigManager.
++ * In OOS this is a plain interface whose methods all carry default (no-op /
++ * return-false) bodies; reproduced faithfully so any invoke-interface resolves.
++ * FeatureID is provided here as the nested enum (binary name
++ * com.oplus.content.IOplusFeatureConfigManager$FeatureID).
++ */
++public interface IOplusFeatureConfigManager {
++
++    enum FeatureID {
++        STATIC_COMPONENT,
++        DYNAMIC_SIMSLOT_1,
++        DYNAMIC_SIMSLOT_2,
++        INVALID
++    }
++
++    default boolean hasFeature(String featureName) throws RemoteException {
++        return false;
++    }
++
++    default boolean hasFeature(String name, FeatureID featureID) throws RemoteException {
++        return false;
++    }
++
++    default boolean enableFeature(String featureName) throws RemoteException {
++        return false;
++    }
++
++    default boolean enableFeature(String featureName, FeatureID featureID) throws RemoteException {
++        return false;
++    }
++
++    default boolean disableFeature(String featureName) throws RemoteException {
++        return false;
++    }
++
++    default boolean disableFeature(String featureName, FeatureID featureID) throws RemoteException {
++        return false;
++    }
++
++    default void notifyFeaturesUpdate(String action, String actionValue) throws RemoteException {
++    }
++
++    default void notifyFeaturesUpdate(String action, String actionValue, FeatureID featureID) throws RemoteException {
++    }
++
++    default boolean registerFeatureObserver(List<String> features, IOplusFeatureObserver observer) {
++        return false;
++    }
++
++    default boolean unregisterFeatureObserver(IOplusFeatureObserver observer) {
++        return false;
++    }
++
++    default boolean registerFeatureObserver(List<String> features, FeatureID featureID, IOplusFeatureMapObserver observer) {
++        return false;
++    }
++
++    default boolean unregisterFeatureObserver(FeatureID featureID, IOplusFeatureMapObserver observer) {
++        return false;
++    }
++
++    default boolean registerFeatureActionObserver(IOplusFeatureActionObserver observer) {
++        return false;
++    }
++
++    default boolean unregisterFeatureActionObserver(IOplusFeatureActionObserver observer) {
++        return false;
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/content/OplusFeatureConfigManager.java b/oplus-fwk/src/com/oplus/content/OplusFeatureConfigManager.java
+index c13755a1..34e37d05 100644
+--- a/oplus-fwk/src/com/oplus/content/OplusFeatureConfigManager.java
++++ b/oplus-fwk/src/com/oplus/content/OplusFeatureConfigManager.java
+@@ -57,4 +57,8 @@ public class OplusFeatureConfigManager {
+     public interface OnFeatureMapObserver {
+         default void onFeatureUpdate(List<String> list, int featureID) {}
+     }
++
++    public boolean isPermit(String feature) {
++        return true;
++    }
+ }
+-- 
+2.50.1 (Apple Git-155)
+

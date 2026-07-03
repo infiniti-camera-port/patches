@@ -1,0 +1,34 @@
+From a3fd6cccf58fac6546423d4152774e2cf9edf714 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Thu, 2 Jul 2026 08:53:17 -0600
+Subject: [PATCH 11/16] infiniti: camera: add the singleblur license to the
+ extract list
+
+The singleblur person-seg engine validates odm/etc/camera/singleblur/
+license_release.license at load; the blob was staged vendor-side but
+never declared here, so a regeneration would drop it. Declare it next
+to the other singleblur payloads.
+
+Regenerates: proprietary_vendor_oneplus_infiniti "infiniti: camera:
+ship singleblur person-seg license".
+
+(cherry picked from commit 8833551bac716616afa0e2882305af95851813d2)
+---
+ proprietary-files.txt | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/proprietary-files.txt b/proprietary-files.txt
+index 8d65760..6e5f9f2 100644
+--- a/proprietary-files.txt
++++ b/proprietary-files.txt
+@@ -747,6 +747,7 @@ odm/etc/camera/pfb_bin/ThirdPartyPreSkintuneBinary.bin
+ odm/etc/camera/pfb_bin/ThirdPartyPreSkintuneMRTBinary.bin
+ odm/etc/camera/pfb_bin/ThirdPartyPreVertFilterBinary.bin
+ odm/etc/camera/pfb_bin/ThirdPartyPreVertSurBinary.bin
++odm/etc/camera/singleblur/license_release.license
+ odm/etc/camera/singleblur/personseg.bin
+ odm/etc/camera/singleblur/preview_seg.json
+ odm/etc/camera/sticker/material/animoji/data.zip
+-- 
+2.50.1 (Apple Git-155)
+

@@ -1,0 +1,31 @@
+From 8f92887116802574cca5306418db00cfc2a98053 Mon Sep 17 00:00:00 2001
+From: Jonas Salo <salomannen1234@gmail.com>
+Date: Wed, 1 Jul 2026 18:03:20 -0600
+Subject: [PATCH 10/16] infiniti: ship Oplus feature flags
+
+Declare my_product/etc/permissions/oplus.feature.android.xml in the
+proprietary-files list so the Oplus feature declarations are installed.
+These flags gate OEM app features such as Gallery OLive, which the
+runtime feature scan reads to decide what to enable.
+
+(cherry picked from commit 3222f4fb12343b9c685c52bee44e6ff4e41c07dd)
+---
+ proprietary-files.txt | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/proprietary-files.txt b/proprietary-files.txt
+index 6ce30b7..8d65760 100644
+--- a/proprietary-files.txt
++++ b/proprietary-files.txt
+@@ -83,6 +83,8 @@ odm/etc/audio/oprec_audrec_params/oprec_record_ID99_Bypass.bin
+ odm/etc/audio/oprec_audrec_params/oprec_record_ID9_HE.bin
+ odm/etc/audio/oprec_audrec_params/oprec_record_calibration.bin
+ 
++my_product/etc/permissions/oplus.feature.android.xml:product/etc/permissions/oplus.feature.android.xml
++
+ # Camera
+ odm/bin/hw/vendor.oplus.hardware.cammidasservice-V1-service
+ odm/etc/camera/AIAE_Models/AIAEVideoModelMain.bin
+-- 
+2.50.1 (Apple Git-155)
+

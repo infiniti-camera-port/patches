@@ -1,0 +1,60 @@
+From b72c45aa14b681c5b7a3bb1d950f9a5d36f40886 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 30 Jun 2026 23:49:32 -0600
+Subject: [PATCH 13/24] =?UTF-8?q?[WIP]=20oplus-fwk:=20implement=20OplusCfg?=
+ =?UTF-8?q?FilePolicy.getCfgLevelList=20for=20the=20LOS=20partition=20layo?=
+ =?UTF-8?q?ut=20=E2=80=94=20converge=20on=20the=20OOS-baseline=20OEM=20cfg?=
+ =?UTF-8?q?=20dir-scan=20(was=20an=20empty=20stub)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Restore the OEM app-feature/cust config-file locator the v3.0 bring-up stubbed to
+return empty (which also starved com.oplus.aiunit's AssetsUnitStore.listFilesFromOS).
+Enumerate the LOS partitions (/system_ext,/product,/system,/vendor,/odm)+<configName>
+instead of the absent OEM /my_* cust partitions.
+
+(cherry picked from commit dbbebac87c7a1b5a48e7e10ba9a87d11e191f878)
+
+Ledger: hardware_oplus.md Accepted Group C row 2 (dbbebac8)
+Stub-matrix: task-9-stub-inventory.md row K03 — consumer: OEM app-feature scan / gallery motion-photo replay gate (empty stub broke it, v3.1 fix); location: oplus-fwk boot jar, depends on c009c8d2; lands in the same series as 5d340832 (K01 isPermit) per the v3.1/v3.2 bootloop pairing
+Change-Id: I75a3ba96906cec4da4bc36fd48ada5e62ed5f60f
+---
+ .../com/oplus/cust/OplusCfgFilePolicy.java    | 20 ++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/oplus-fwk/src/com/oplus/cust/OplusCfgFilePolicy.java b/oplus-fwk/src/com/oplus/cust/OplusCfgFilePolicy.java
+index 49ced32d..7d2fcd1e 100644
+--- a/oplus-fwk/src/com/oplus/cust/OplusCfgFilePolicy.java
++++ b/oplus-fwk/src/com/oplus/cust/OplusCfgFilePolicy.java
+@@ -27,8 +27,26 @@ public class OplusCfgFilePolicy {
+         return new ArrayList();
+     }
+ 
++    // OOS maps <configName> onto the OEM cust levels (/my_product, /my_carrier, ... + base),
++    // which are absent on LineageOS. Enumerate the LOS partition layout instead so the OEM
++    // AppFeatureProvider / cust consumers locate their config dirs the same way OOS does —
++    // e.g. /system_ext/etc/extension/com.oplus.app-features.xml. Returns the existing
++    // <partition><configName> dirs in priority order; empty only when none exist, which keeps
++    // consumers-with-no-config degrading gracefully (the reason the port stubbed this to empty).
+     public static List getCfgLevelList(String configName, int slot) {
+-        return new ArrayList();
++        List list = new ArrayList();
++        if (configName == null) {
++            return list;
++        }
++        String sub = configName.startsWith("/") ? configName : "/" + configName;
++        String[] roots = { "/system_ext", "/product", "/system", "/vendor", "/odm" };
++        for (String root : roots) {
++            String dir = root + sub;
++            if (new File(dir).isDirectory()) {
++                list.add(dir);
++            }
++        }
++        return list;
+     }
+ 
+     public static File getCfgTopPriorityFile(String configName, String dir, int slot) {
+-- 
+2.50.1 (Apple Git-155)
+

@@ -1,0 +1,56 @@
+From 647d67dd971a02d251fea0017b0573d8cf848ba4 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Wed, 1 Jul 2026 00:56:39 -0600
+Subject: [PATCH 5/5] libcameraservice: bypass decreasing-timestamp buffer
+ error (unconditional)
+
+Cherry-pick of realahnet/frameworks_av 8ce4c0f. Some HALs report a decreasing frame
+timestamp, which Camera3Stream::returnBuffer flags as CAMERA_BUFFER_STATUS_ERROR (can
+stall capture). Guard that check behind ALLOW_NONINCREASING_TIMESTAMPS. Defined
+unconditionally via a plain cflag for now, NOT a soong_config_variable select.
+
+(cherry picked from commit f30ddb8957c9aa66f6b0be3a88814b98dee9680c)
+---
+ services/camera/libcameraservice/Android.bp                | 4 ++++
+ services/camera/libcameraservice/device3/Camera3Stream.cpp | 4 ++++
+ 2 files changed, 8 insertions(+)
+
+diff --git a/services/camera/libcameraservice/Android.bp b/services/camera/libcameraservice/Android.bp
+index 4175e8ad7a..e414dd06a1 100644
+--- a/services/camera/libcameraservice/Android.bp
++++ b/services/camera/libcameraservice/Android.bp
+@@ -256,6 +256,10 @@ cc_library {
+         "-Wextra",
+         "-Werror",
+         "-Wno-ignored-qualifiers",
++        // v3.2: bypass the decreasing-HAL-timestamp buffer error (realahnet 8ce4c0f).
++        // Defined unconditionally for now instead of a soong_config_variable("cameraservice",
++        // "allow_nonincreasing_timestamps") select; swap to a select when the config is wired.
++        "-DALLOW_NONINCREASING_TIMESTAMPS",
+     ] + select(soong_config_variable("camera", "package_name"), {
+         any @ flag_val: ["-DCAMERA_PACKAGE_NAME=\"" + flag_val + "\""],
+         default: [],
+diff --git a/services/camera/libcameraservice/device3/Camera3Stream.cpp b/services/camera/libcameraservice/device3/Camera3Stream.cpp
+index 6a44ee38be..aeb60f0105 100644
+--- a/services/camera/libcameraservice/device3/Camera3Stream.cpp
++++ b/services/camera/libcameraservice/device3/Camera3Stream.cpp
+@@ -778,12 +778,16 @@ status_t Camera3Stream::returnBuffer(const camera_stream_buffer &buffer,
+ 
+     // Buffer status may be changed, so make a copy of the stream_buffer struct.
+     camera_stream_buffer b = buffer;
++#ifdef ALLOW_NONINCREASING_TIMESTAMPS
++    (void)timestampIncreasing;
++#else
+     if (timestampIncreasing && timestamp != 0 && timestamp <= mLastTimestamp
+             && b.status != CAMERA_BUFFER_STATUS_ERROR) {
+         ALOGE("%s: Stream %d: timestamp %" PRId64 " is not increasing. Prev timestamp %" PRId64,
+                 __FUNCTION__, mId, timestamp, mLastTimestamp);
+         b.status = CAMERA_BUFFER_STATUS_ERROR;
+     }
++#endif
+     mLastTimestamp = timestamp;
+ 
+     /**
+-- 
+2.50.1 (Apple Git-155)
+

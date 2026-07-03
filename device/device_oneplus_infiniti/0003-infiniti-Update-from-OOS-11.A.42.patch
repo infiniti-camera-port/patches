@@ -1,0 +1,63 @@
+From 710f2e9adb0023d7de05d95a123b6e908557fd75 Mon Sep 17 00:00:00 2001
+From: chandu078 <chandudyavanapelli03@gmail.com>
+Date: Fri, 12 Jun 2026 18:52:05 +0000
+Subject: [PATCH 03/16] infiniti: Update from OOS 11.A.42
+
+Change-Id: Ic79574ae2b90ba8e3f903980eaa09e7e9119c232
+(cherry picked from commit dedc928eb3e3b48e61f7789c7323abba1295a0d5)
+---
+ lineage_infiniti.mk      | 4 ++--
+ proprietary-files.txt    | 4 +++-
+ proprietary-firmware.txt | 2 +-
+ 3 files changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/lineage_infiniti.mk b/lineage_infiniti.mk
+index 179ab18..d8030e3 100644
+--- a/lineage_infiniti.mk
++++ b/lineage_infiniti.mk
+@@ -23,8 +23,8 @@ PRODUCT_MODEL := CPH2745
+ PRODUCT_GMS_CLIENTID_BASE := android-oneplus
+ 
+ PRODUCT_BUILD_PROP_OVERRIDES += \
+-    BuildDesc="qssi_64-user 16 BP2A.250605.015 1777734426211 release-keys" \
+-    BuildFingerprint=OnePlus/CPH2745IN/OP611FL1:16/BP2A.250605.015/B.R4T3.4af8531-273ed27-276d247:user/release-keys \
++    BuildDesc="qssi_64-user 16 BP2A.250605.015 1779937534743 release-keys" \
++    BuildFingerprint=OnePlus/CPH2745IN/OP611FL1:16/BP2A.250605.015/B.R4T3.2e4dd7d-a2e41f-a65541:user/release-keys \
+     DeviceName=OP611FL1 \
+     DeviceProduct=CPH2745 \
+     SystemDevice=OP611FL1 \
+diff --git a/proprietary-files.txt b/proprietary-files.txt
+index c529444..ecc52fa 100644
+--- a/proprietary-files.txt
++++ b/proprietary-files.txt
+@@ -1,5 +1,5 @@
+ ## All proprietary files from this list, unless pinned and noted otherwise,
+-## are from OnePlus 15 (CPH2745_16.0.7.201(EX01)).
++## are from OnePlus 15 (CPH2745_16.0.8.300(EX01)).
+ 
+ # ACDB
+ odm/etc/acdbdata/FTM/acdb_cal.acdb
+@@ -1817,7 +1817,9 @@ odm/firmware/tp/infiniti/libafe_s3910.so
+ odm/firmware/tp/infiniti/libafepanel_s3910_boe.so
+ odm/firmware/tp/infiniti/libafepanel_s3910_tianma.so
+ odm/firmware/tp/infiniti/libpostalgo.so
++odm/firmware/tp/infiniti/libpostalgo_symbol.so
+ odm/firmware/tp/infiniti/libprealgo.so
++odm/firmware/tp/infiniti/libprealgo_symbol.so
+ odm/firmware/tp/infiniti/main_synaptics-s3910_boe_aging_limit.csv
+ odm/firmware/tp/infiniti/main_synaptics-s3910_boe_limit.csv
+ odm/firmware/tp/infiniti/main_synaptics-s3910_tianma_aging_limit.csv
+diff --git a/proprietary-firmware.txt b/proprietary-firmware.txt
+index 171cf6c..be1582f 100644
+--- a/proprietary-firmware.txt
++++ b/proprietary-firmware.txt
+@@ -1,5 +1,5 @@
+ ## All proprietary files from this list, unless pinned and noted otherwise,
+-## are from OnePlus 15 (CPH2745_16.0.7.201(EX01)).
++## are from OnePlus 15 (CPH2745_16.0.8.300(EX01)).
+ 
+ abl.img;AB
+ aop.img;AB
+-- 
+2.50.1 (Apple Git-155)
+

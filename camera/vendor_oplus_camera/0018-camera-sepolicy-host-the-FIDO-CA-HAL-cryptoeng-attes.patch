@@ -1,0 +1,170 @@
+From 4cb12c435fc33004c6d4f85beec6f80c6b8bd537 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Fri, 3 Jul 2026 00:28:25 +0000
+Subject: [PATCH 18/19] camera: sepolicy: host the FIDO CA HAL + cryptoeng
+ attestation client rules
+
+With the FIDO CA chain now shipped, host its sepolicy so the daemons start,
+register their AIDL IFidoDaemon instances, and cryptoeng can reach them:
+
+  - new vendor_hal_fido_oplus / vendor_hal_fido2_oplus domains (init-daemon,
+    add_service, servicemanager binder, and the QSEE/TrustZone TA-load path
+    mirroring hal_cryptoeng_oplus);
+  - their _service types (service.te), service_contexts for the fidoca /
+    fido2ca IFidoDaemon/default instances, _exec types (file.te) and exec
+    file_contexts;
+  - cryptoeng -> fido client rules (find + binder_call on both daemons);
+  - a priv_app find on vendor_hal_cryptoeng_oplus_service so the AI Unit
+    worker (which runs as priv_app, not system_app) can discover ICryptoeng.
+    Kept in the vendor dir alongside the existing system_app rule so the
+    vendor-defined service type resolves at policy link.
+
+The residual running-service AVCs (fidotap/cryptoeng TA firmware_file read,
+the rpmb_status/.lii keybox-cache store, and the commondcs / fingerprintpay
+clients) reference OEM types not hosted in this tree and are left as a
+documented first-boot audit2allow TODO, not pre-granted and not papered over
+with a permissive domain -- the running chain dead-ends at the TA (10048) on
+an unlocked bootloader regardless, so this is device-tree completeness for
+service bring-up + registration, not a functional cloud-attestation path.
+
+Change-Id: Ibdcf829a992a1bf517ae7891c2865f6a5b76bf7e
+---
+ sepolicy/vendor/file.te                |  4 ++++
+ sepolicy/vendor/file_contexts          |  3 +++
+ sepolicy/vendor/hal_cryptoeng_oplus.te | 13 +++++++++++++
+ sepolicy/vendor/hal_fido2_oplus.te     | 17 +++++++++++++++++
+ sepolicy/vendor/hal_fido_oplus.te      | 22 ++++++++++++++++++++++
+ sepolicy/vendor/priv_app.te            |  6 ++++++
+ sepolicy/vendor/service.te             |  2 ++
+ sepolicy/vendor/service_contexts       |  2 ++
+ 8 files changed, 69 insertions(+)
+ create mode 100644 sepolicy/vendor/hal_fido2_oplus.te
+ create mode 100644 sepolicy/vendor/hal_fido_oplus.te
+ create mode 100644 sepolicy/vendor/priv_app.te
+
+diff --git a/sepolicy/vendor/file.te b/sepolicy/vendor/file.te
+index 3aa1f64..56a162f 100644
+--- a/sepolicy/vendor/file.te
++++ b/sepolicy/vendor/file.te
+@@ -5,3 +5,7 @@ type vendor_hal_cryptoeng_oplus_exec, exec_type, vendor_file_type, file_type;
+ 
+ # OCCE shader-cache output tree (/mnt/occe/{shader,cache})
+ type occe_data_file, file_type, data_file_type;
++
++# FIDO CA HAL daemon exec labels
++type vendor_hal_fido_oplus_exec,  exec_type, vendor_file_type, file_type;
++type vendor_hal_fido2_oplus_exec, exec_type, vendor_file_type, file_type;
+diff --git a/sepolicy/vendor/file_contexts b/sepolicy/vendor/file_contexts
+index 6e8161a..eb44fb8 100644
+--- a/sepolicy/vendor/file_contexts
++++ b/sepolicy/vendor/file_contexts
+@@ -594,3 +594,6 @@
+ /(vendor|odm)/lib(64)?/libvega_common\.so    u:object_r:same_process_hal_file:s0
+ /(vendor|odm)/lib(64)?/rfsa/adsp/libQnnHtpV81Skel\.so    u:object_r:same_process_hal_file:s0
+ /(vendor|odm)/lib(64)?/rfsa/adsp/libQnnHtpV81\.so    u:object_r:same_process_hal_file:s0
++
++/(vendor|odm)/bin/hw/vendor\.oplus\.hardware\.fido\.fidoca@1\.0-service     u:object_r:vendor_hal_fido_oplus_exec:s0
++/(vendor|odm)/bin/hw/vendor\.oplus\.hardware\.fido\.fido2ca@1\.0-service    u:object_r:vendor_hal_fido2_oplus_exec:s0
+diff --git a/sepolicy/vendor/hal_cryptoeng_oplus.te b/sepolicy/vendor/hal_cryptoeng_oplus.te
+index 853b575..3ec2b0d 100644
+--- a/sepolicy/vendor/hal_cryptoeng_oplus.te
++++ b/sepolicy/vendor/hal_cryptoeng_oplus.te
+@@ -19,3 +19,16 @@ allow vendor_hal_cryptoeng_oplus system_app:file r_file_perms;
+ # protected_service only neverallows untrusted/isolated apps from finding it;
+ # priv_app is trusted, so grant the lookup (was benign permissive=0 avc spam).
+ allow priv_app vendor_hal_cryptoeng_oplus_service:service_manager find;
++
++# --- FIDO CA attestation backend ---
++# cryptoeng waitForService()s both IFidoDaemon instances at attestation time
++# (binary strings: "Trying to connect to fido service").
++allow vendor_hal_cryptoeng_oplus vendor_hal_fido_oplus_service:service_manager find;
++allow vendor_hal_cryptoeng_oplus vendor_hal_fido2_oplus_service:service_manager find;
++binder_call(vendor_hal_cryptoeng_oplus, vendor_hal_fido_oplus)
++binder_call(vendor_hal_cryptoeng_oplus, vendor_hal_fido2_oplus)
++# TODO(first-boot audit2allow): cryptoeng's other runtime clients (commondcs
++# security-event sink, fingerprintpay) and its own fidotap/cryptoeng TA
++# firmware_file read + rpmb_status/.lii keybox-store /data rules are deferred to
++# an audit pass — the OEM service/data types are not hosted here and the chain
++# dead-ends at the TA (10048) on an unlocked bootloader. Do NOT use permissive.
+diff --git a/sepolicy/vendor/hal_fido2_oplus.te b/sepolicy/vendor/hal_fido2_oplus.te
+new file mode 100644
+index 0000000..2fb313c
+--- /dev/null
++++ b/sepolicy/vendor/hal_fido2_oplus.te
+@@ -0,0 +1,17 @@
++# vendor.oplus.hardware.fido.fido2ca@1.0-service — FIDO2/CTAP CA HAL daemon.
++# cryptoeng's runtime IFidoDaemon binder server; QSEECom-loads the fidoctap TA.
++type vendor_hal_fido2_oplus, domain;
++init_daemon_domain(vendor_hal_fido2_oplus)
++
++add_service(vendor_hal_fido2_oplus, vendor_hal_fido2_oplus_service)
++binder_use(vendor_hal_fido2_oplus)
++binder_call(vendor_hal_fido2_oplus, servicemanager)
++
++# QSEE / TrustZone TA-load path (fidoctap) — mirrors hal_cryptoeng_oplus.
++allow vendor_hal_fido2_oplus tee_device:chr_file rw_file_perms;
++allow vendor_hal_fido2_oplus ion_device:chr_file rw_file_perms;
++allow vendor_hal_fido2_oplus vendor_dmabuf_qseecom_heap_device:chr_file r_file_perms;
++allow vendor_hal_fido2_oplus vendor_dmabuf_qseecom_ta_heap_device:chr_file r_file_perms;
++
++# TODO(first-boot audit2allow): residual running-service AVCs deferred — see the
++# note in hal_fido_oplus.te. Do NOT resolve them with a permissive domain.
+diff --git a/sepolicy/vendor/hal_fido_oplus.te b/sepolicy/vendor/hal_fido_oplus.te
+new file mode 100644
+index 0000000..fb26823
+--- /dev/null
++++ b/sepolicy/vendor/hal_fido_oplus.te
+@@ -0,0 +1,22 @@
++# vendor.oplus.hardware.fido.fidoca@1.0-service — FIDO CA HAL daemon.
++# cryptoeng's runtime IFidoDaemon binder server; QSEECom-loads the fidotap TA.
++type vendor_hal_fido_oplus, domain;
++init_daemon_domain(vendor_hal_fido_oplus)
++
++add_service(vendor_hal_fido_oplus, vendor_hal_fido_oplus_service)
++binder_use(vendor_hal_fido_oplus)
++binder_call(vendor_hal_fido_oplus, servicemanager)
++
++# QSEE / TrustZone TA-load path (fidotap) — mirrors hal_cryptoeng_oplus.
++allow vendor_hal_fido_oplus tee_device:chr_file rw_file_perms;
++allow vendor_hal_fido_oplus ion_device:chr_file rw_file_perms;
++allow vendor_hal_fido_oplus vendor_dmabuf_qseecom_heap_device:chr_file r_file_perms;
++allow vendor_hal_fido_oplus vendor_dmabuf_qseecom_ta_heap_device:chr_file r_file_perms;
++
++# TODO(first-boot audit2allow): the residual running-service AVCs — fidotap
++# firmware_file read, the /data/vendor_de/[0-9]+/rpmb_status/.lii keybox-cache
++# store, and the commondcs security-event sink — are intentionally deferred to a
++# first-boot audit pass, not pre-granted here: the referenced OEM types are not
++# hosted in this tree, and the running attestation chain dead-ends at the TA
++# (qsee_km_get_encapsulated_key -> 10048) on an unlocked bootloader regardless.
++# Do NOT resolve them with a permissive domain.
+diff --git a/sepolicy/vendor/priv_app.te b/sepolicy/vendor/priv_app.te
+new file mode 100644
+index 0000000..4d30dae
+--- /dev/null
++++ b/sepolicy/vendor/priv_app.te
+@@ -0,0 +1,6 @@
++# The AI Unit worker runs as priv_app (no dedicated seapp domain on this build;
++# stock provisions it as oplus_sandbox). It must discover the cryptoeng
++# attestation service to reach ICryptoeng/default — mirrors the system_app find
++# rule already in-tree (sepolicy/vendor/system_app.te). Kept in the vendor dir
++# (not private/) so the vendor-defined service type is in scope at policy link.
++allow priv_app vendor_hal_cryptoeng_oplus_service:service_manager find;
+diff --git a/sepolicy/vendor/service.te b/sepolicy/vendor/service.te
+index 37a077f..7ebfd09 100644
+--- a/sepolicy/vendor/service.te
++++ b/sepolicy/vendor/service.te
+@@ -1 +1,3 @@
+ type vendor_hal_cryptoeng_oplus_service, hal_service_type, protected_service, service_manager_type;
++type vendor_hal_fido_oplus_service,  hal_service_type, protected_service, service_manager_type;
++type vendor_hal_fido2_oplus_service, hal_service_type, protected_service, service_manager_type;
+diff --git a/sepolicy/vendor/service_contexts b/sepolicy/vendor/service_contexts
+index 1fecce8..0a8cc06 100644
+--- a/sepolicy/vendor/service_contexts
++++ b/sepolicy/vendor/service_contexts
+@@ -1 +1,3 @@
+ vendor.oplus.hardware.cryptoeng.ICryptoeng/default    u:object_r:vendor_hal_cryptoeng_oplus_service:s0
++vendor.oplus.hardware.fido.fidoca.IFidoDaemon/default     u:object_r:vendor_hal_fido_oplus_service:s0
++vendor.oplus.hardware.fido.fido2ca.IFidoDaemon/default    u:object_r:vendor_hal_fido2_oplus_service:s0
+-- 
+2.50.1 (Apple Git-155)
+

@@ -1,0 +1,43 @@
+From ab98365740538dcef33ec9ff62bc2eae91bde8ba Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Thu, 2 Jul 2026 22:24:48 -0600
+Subject: [PATCH 19/19] camera: sepolicy: don't allow cameraserver to read
+ vendor_default_prop
+
+The earlier "quiet benign camera-stack avc denials" change granted
+cameraserver a get_prop() on vendor_default_prop to silence permissive=0
+avc spam seen during OplusCamera pipeline setup. cameraserver is a
+coredomain, so an allow on vendor_default_prop:file violates the Treble
+property-ownership neverallow (system/sepolicy/public/property.te:353 and
+private/property.te:164), failing the sepolicy_neverallows and
+system_ext_sepolicy.cil build steps.
+
+The read is not functionally required (stock labels that property with a
+typed context absent on this build; the camera pipeline works without it).
+Silence the benign denial with dontaudit instead of granting a coredomain
+access to a vendor property type, which keeps the log quiet without
+tripping the neverallow.
+---
+ sepolicy/private/cameraserver.te | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/sepolicy/private/cameraserver.te b/sepolicy/private/cameraserver.te
+index c221da5..77a0b53 100644
+--- a/sepolicy/private/cameraserver.te
++++ b/sepolicy/private/cameraserver.te
+@@ -5,5 +5,10 @@ allow cameraserver data_system_camera_rus:file { read getattr setattr open };
+ allow cameraserver opluscamera_app:process setsched;
+ 
+ # cameraserver reads OEM vendor_default_prop during OplusCamera pipeline setup
+-# (benign getprop fallback; was permissive=0 avc spam).
+-get_prop(cameraserver, vendor_default_prop)
++# (benign getprop fallback; was permissive=0 avc spam). cameraserver is a
++# coredomain, so an allow on vendor_default_prop:file trips the Treble property-
++# ownership neverallow (system/sepolicy/{public,private}/property.te). The read
++# is not functionally required (stock labels the prop with a typed context that
++# is absent on our build); silence the benign denial with dontaudit rather than
++# granting a coredomain access to a vendor property type.
++dontaudit cameraserver vendor_default_prop:file { read getattr map open };
+-- 
+2.50.1 (Apple Git-155)
+

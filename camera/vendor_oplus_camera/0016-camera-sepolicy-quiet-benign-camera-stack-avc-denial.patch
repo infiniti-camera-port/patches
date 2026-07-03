@@ -1,0 +1,66 @@
+From 689a36f93873457d2df0f6f09ab0a42d35acc66a Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Thu, 2 Jul 2026 23:50:39 +0000
+Subject: [PATCH 16/19] camera: sepolicy: quiet benign camera-stack avc denials
+
+Add minimal allows for benign, clearly-ours SELinux denials (all were
+permissive=0 avc log spam with no functional loss):
+
+- priv_app -> vendor_hal_cryptoeng_oplus_service:service_manager find: the
+  AIUnit cloud-attestation apps (priv_app) look the cryptoeng HAL up by name
+  (vendor.oplus.hardware.cryptoeng.ICryptoeng/default). protected_service only
+  neverallows untrusted/isolated apps from finding it; priv_app is trusted.
+- cameraserver -> vendor_default_prop:file read: OplusCamera pipeline getprop.
+- opluscamera_app -> vendor_camera_data_file:dir add_name: the TEXT/OCR
+  RefFrameProcessor already had create on the files but lacked add_name on the
+  dir, so creating files under /data/vendor/camera was denied.
+
+Change-Id: Id1ec47666d5d9242df429555b5b9942a8adc48ea
+---
+ sepolicy/private/cameraserver.te       | 4 ++++
+ sepolicy/vendor/hal_cryptoeng_oplus.te | 6 ++++++
+ sepolicy/vendor/opluscamera_app.te     | 2 +-
+ 3 files changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/sepolicy/private/cameraserver.te b/sepolicy/private/cameraserver.te
+index e2c0f3b..c221da5 100644
+--- a/sepolicy/private/cameraserver.te
++++ b/sepolicy/private/cameraserver.te
+@@ -3,3 +3,7 @@ allow cameraserver data_system_camera_rus:file { read getattr setattr open };
+ 
+ # cameraserver bumps the camera-app client RT priority (OOS grants; was permissive avc)
+ allow cameraserver opluscamera_app:process setsched;
++
++# cameraserver reads OEM vendor_default_prop during OplusCamera pipeline setup
++# (benign getprop fallback; was permissive=0 avc spam).
++get_prop(cameraserver, vendor_default_prop)
+diff --git a/sepolicy/vendor/hal_cryptoeng_oplus.te b/sepolicy/vendor/hal_cryptoeng_oplus.te
+index 1910be5..853b575 100644
+--- a/sepolicy/vendor/hal_cryptoeng_oplus.te
++++ b/sepolicy/vendor/hal_cryptoeng_oplus.te
+@@ -13,3 +13,9 @@ allow vendor_hal_cryptoeng_oplus vendor_dmabuf_qseecom_ta_heap_device:chr_file r
+ allow vendor_hal_cryptoeng_oplus hidl_base_hwservice:hwservice_manager add;
+ allow vendor_hal_cryptoeng_oplus system_app:dir search;
+ allow vendor_hal_cryptoeng_oplus system_app:file r_file_perms;
++
++# AIUnit cloud-attestation apps (priv_app, e.g. the AI editor) look up the
++# cryptoeng HAL by name (vendor.oplus.hardware.cryptoeng.ICryptoeng/default).
++# protected_service only neverallows untrusted/isolated apps from finding it;
++# priv_app is trusted, so grant the lookup (was benign permissive=0 avc spam).
++allow priv_app vendor_hal_cryptoeng_oplus_service:service_manager find;
+diff --git a/sepolicy/vendor/opluscamera_app.te b/sepolicy/vendor/opluscamera_app.te
+index 5778d9c..f0dc10d 100644
+--- a/sepolicy/vendor/opluscamera_app.te
++++ b/sepolicy/vendor/opluscamera_app.te
+@@ -23,7 +23,7 @@ allow opluscamera_app opluscamera_app_data_file:dir { read open search write add
+ # session setup; actual writes go through the HAL.
+ allow opluscamera_app vendor_qdsp_device:chr_file { ioctl read open };
+ # TEXT/OCR (preview_documen, RefFrameProcess) traverse + read /data/vendor/camera
+-allow opluscamera_app vendor_camera_data_file:dir  { search read write open getattr };
++allow opluscamera_app vendor_camera_data_file:dir  { search read write open getattr add_name };
+ allow opluscamera_app vendor_camera_data_file:file { read write create open getattr };
+ 
+ # selinuxfs
+-- 
+2.50.1 (Apple Git-155)
+

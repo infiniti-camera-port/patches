@@ -1,0 +1,489 @@
+From 9f0f91c030173c99f5064490074e6e0f69803d20 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Fri, 3 Jul 2026 00:11:01 +0000
+Subject: [PATCH 13/19] camera: port OP15 private-space + Gallery/FileManager
+ framework support
+
+Port the OP15InfinityX private-space / Gallery / FileManager framework
+support into the vendor/oplus/camera extraction and policy root (kept
+here rather than a device/oneplus/infiniti-camera tree):
+
+- apk fixup framework (apk_fixups_op15.py, apk_fixups_camera_op15.py,
+  apk_fixups_gallery_op15.py) driven from extract-files.py: anchor-based,
+  apktool-verified manifest/smali edits for OplusCamera (component-safe
+  alias + OEM-perm strip), OppoGallery2 (set-as-wallpaper ATTACH_DATA
+  intent) and the cryptoeng framework payload (permissions XML +
+  manifest).
+- the OEM cryptoeng App-Lock HAL payload (blobs, framework, permissions
+  and vendor sepolicy: hal_cryptoeng_oplus / hwservice / service / tee /
+  file types and contexts) plus libqsee_keybox_ca.so so the odm cryptoeng
+  service links.
+- privileged-permission allowlist and hidden-api exemptions for the
+  shipped OPLUS apps and the OPPO component-safe / private-safe gates.
+
+None of the seven OP15InfinityX OEM security / private-space apps is
+shipped:
+
+- the three system_ext priv-apps (com.oplus.pantanal.ums,
+  com.oplus.phonemanager, com.oplus.exsystemservice): with
+  ro.control_privapp_permissions=enforce they request platform privileged
+  permissions with no allowlist entry and turn systemReady into a
+  system_server bootloop. None is load-bearing for the camera stack
+  (their absence is tolerated via caught NameNotFound / missing-provider
+  paths).
+- the four security / private-space siblings, per the maximal-de-bloat
+  decision:
+  - com.oplus.safecenter (SafeCenter / Security Centre): crashed on
+    camera launch (NoSuchMethodError in its own SecureSafeApp.onCreate
+    against the oplus-fwk stub). The camera's only touch point,
+    GalleryHelper's query of content://com.oplus.provider.SafeProvider
+    (limit_use_app check), is null-checked and wrapped in try/catch, so
+    the provider's absence fails closed.
+  - com.oplus.encryption (FileEncryption): the Private Safe vault;
+    Gallery/FileManager "move to Private Safe" flows degrade benignly.
+  - com.oneplus.filemanager (FileManager): functional duplicate of the
+    LOS file manager.
+  - com.oplus.securitypermission (SecurityPermission): dropping its
+    permission-definer fixup un-defines the com.oplus.permission.safe.*
+    signature family -> OEM cross-app guards become deny-all to external
+    callers, benign; its two real perms (SECURITY_ACTION,
+    safe.SMS.BROADCAST) have no shipped consumer.
+
+The cryptoeng App-Lock HAL is kept (shared by the FIDO/cryptoeng
+device-attestation path) and so is libOplusSecurity.so (a base camera
+blob from the initial port). See docs/PRIVATE_SPACE.md for the
+disposition and future-work note.
+
+Original OP15InfinityX port + Gallery/FileManager fixups by Jonas Salo
+<salomannen1234@gmail.com>; OEM security / private-space apps dropped and
+reconciled for the infiniti-camera-port build.
+
+Change-Id: Ifb5f013760d7be88002bffa31ffe792b1ec09309
+---
+ apk_fixups_camera_op15.py                     | 24 ++++++++
+ apk_fixups_gallery_op15.py                    | 61 +++++++++++++++++++
+ apk_fixups_op15.py                            | 24 ++++++++
+ .../permissions/privapp-permissions-oplus.xml | 31 ++++++----
+ .../hiddenapi-package-oplus-whitelist.xml     |  1 -
+ extract-files.py                              | 40 ++++++------
+ proprietary-files.txt                         | 28 ++++++++-
+ sepolicy/vendor/file.te                       |  2 +
+ sepolicy/vendor/file_contexts                 |  2 +
+ sepolicy/vendor/hal_cryptoeng_oplus.te        | 15 +++++
+ sepolicy/vendor/hwservice.te                  |  1 +
+ sepolicy/vendor/hwservice_contexts            |  1 +
+ sepolicy/vendor/service.te                    |  1 +
+ sepolicy/vendor/service_contexts              |  1 +
+ sepolicy/vendor/system_app.te                 |  4 ++
+ sepolicy/vendor/tee.te                        |  2 +
+ 16 files changed, 201 insertions(+), 37 deletions(-)
+ create mode 100644 apk_fixups_camera_op15.py
+ create mode 100644 apk_fixups_gallery_op15.py
+ create mode 100644 apk_fixups_op15.py
+ create mode 100644 sepolicy/vendor/hal_cryptoeng_oplus.te
+ create mode 100644 sepolicy/vendor/hwservice.te
+ create mode 100644 sepolicy/vendor/hwservice_contexts
+ create mode 100644 sepolicy/vendor/service.te
+ create mode 100644 sepolicy/vendor/service_contexts
+ create mode 100644 sepolicy/vendor/system_app.te
+ create mode 100644 sepolicy/vendor/tee.te
+
+diff --git a/apk_fixups_camera_op15.py b/apk_fixups_camera_op15.py
+new file mode 100644
+index 0000000..fbb9883
+--- /dev/null
++++ b/apk_fixups_camera_op15.py
+@@ -0,0 +1,24 @@
++from __future__ import annotations
++
++from pathlib import Path
++
++
++def _manifest(tmp_dir: str) -> Path:
++    return Path(tmp_dir) / 'AndroidManifest.xml'
++
++
++def _add_permissions(tmp_dir: str, permissions: tuple[str, ...]) -> None:
++    manifest = _manifest(tmp_dir)
++    data = manifest.read_text(encoding='utf-8') if manifest.exists() else ''
++    entries = ''.join(
++        f'    <uses-permission android:name="{permission}"/>\n'
++        for permission in permissions
++        if permission not in data
++    )
++    if entries:
++        manifest.write_text(data.replace('<application ', entries + '    <application ', 1), encoding='utf-8')
++
++
++def blob_fixup_opluscamera_component_safe_permission(ctx, file, file_path, *args, tmp_dir=None, **kwargs):
++    if tmp_dir is not None:
++        _add_permissions(tmp_dir, ('oppo.permission.OPPO_COMPONENT_SAFE',))
+diff --git a/apk_fixups_gallery_op15.py b/apk_fixups_gallery_op15.py
+new file mode 100644
+index 0000000..a4a4508
+--- /dev/null
++++ b/apk_fixups_gallery_op15.py
+@@ -0,0 +1,61 @@
++from __future__ import annotations
++
++from pathlib import Path
++import re
++
++
++def blob_fixup_oppogallery_wallpaper_attach_intent(ctx, file, file_path, *args, tmp_dir=None, **kwargs):
++    if tmp_dir is None:
++        return
++    replacement = (
++        '.method public final a(Landroid/app/Activity;Landroid/net/Uri;)V\n'
++        '    .locals 3\n'
++        '\n'
++        '    const-string p0, "activity"\n'
++        '\n'
++        '    invoke-static {p1, p0}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullParameter(Ljava/lang/Object;Ljava/lang/String;)V\n'
++        '\n'
++        '    const-string p0, "pickedItem"\n'
++        '\n'
++        '    invoke-static {p2, p0}, Lkotlin/jvm/internal/Intrinsics;->checkNotNullParameter(Ljava/lang/Object;Ljava/lang/String;)V\n'
++        '\n'
++        '    new-instance v0, Landroid/content/Intent;\n'
++        '\n'
++        '    const-string v1, "android.intent.action.ATTACH_DATA"\n'
++        '\n'
++        '    invoke-direct {v0, v1}, Landroid/content/Intent;-><init>(Ljava/lang/String;)V\n'
++        '\n'
++        '    const-string v1, "image/*"\n'
++        '\n'
++        '    invoke-virtual {v0, p2, v1}, Landroid/content/Intent;->setDataAndType(Landroid/net/Uri;Ljava/lang/String;)Landroid/content/Intent;\n'
++        '\n'
++        '    const/4 v2, 0x1\n'
++        '\n'
++        '    invoke-virtual {v0, v2}, Landroid/content/Intent;->setFlags(I)Landroid/content/Intent;\n'
++        '\n'
++        '    const-string v2, "mimeType"\n'
++        '\n'
++        '    invoke-virtual {v0, v2, v1}, Landroid/content/Intent;->putExtra(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;\n'
++        '\n'
++        '    invoke-virtual {p1, v0}, Landroid/app/Activity;->startActivity(Landroid/content/Intent;)V\n'
++        '\n'
++        '    return-void\n'
++        '.end method\n'
++    )
++    signature = 'public final a(Landroid/app/Activity;Landroid/net/Uri;)V'
++    patched = False
++    for smali in Path(tmp_dir).glob('smali*/com/oplus/gallery/pictureeditorpage/PictureEditorDM.smali'):
++        data = smali.read_text(encoding='utf-8')
++        fixed, count = re.subn(
++            rf'(?ms)^\.method {re.escape(signature)}\n.*?^\.end method',
++            replacement,
++            data,
++            count=1,
++        )
++        if count != 1:
++            continue
++        smali.write_text(fixed, encoding='utf-8')
++        patched = True
++        break
++    if not patched:
++        raise ValueError('OppoGallery2 wallpaper attach intent patch point not found')
+diff --git a/apk_fixups_op15.py b/apk_fixups_op15.py
+new file mode 100644
+index 0000000..5dc0ea8
+--- /dev/null
++++ b/apk_fixups_op15.py
+@@ -0,0 +1,24 @@
++from pathlib import Path
++
++from extract_utils.fixups_blob import apktool_path, java_path
++from extract_utils.utils import run_cmd
++
++
++def blob_fixup_apktool_unpack_full(ctx, file, file_path, *args, tmp_dir=None, **kwargs):
++    if tmp_dir is None:
++        return
++    run_cmd([java_path, '-Xmx8g', '-jar', apktool_path, 'd', file_path, '-o', tmp_dir, '-f'])
++
++
++def blob_fixup_cryptoeng_permissions_xml(ctx, file, file_path, *args, tmp_dir=None, **kwargs):
++    path = Path(file_path)
++    data = path.read_text(encoding='utf-8')
++    path.write_text(data.replace('\n</permissions>\n\n<permissions>\n', '\n'), encoding='utf-8')
++
++
++def blob_fixup_cryptoeng_manifest(ctx, file, file_path, *args, tmp_dir=None, **kwargs):
++    path = Path(file_path)
++    data = path.read_text(encoding='utf-8')
++    data = data.replace('<!--\n    <hal format="hidl">', '    <hal format="hidl">')
++    data = data.replace('    </hal>\n-->\n    <hal format="aidl">', '    </hal>\n    <hal format="aidl">')
++    path.write_text(data, encoding='utf-8')
+diff --git a/configs/permissions/privapp-permissions-oplus.xml b/configs/permissions/privapp-permissions-oplus.xml
+index 05febaa..77dac25 100644
+--- a/configs/permissions/privapp-permissions-oplus.xml
++++ b/configs/permissions/privapp-permissions-oplus.xml
+@@ -38,6 +38,7 @@
+         <permission name="android.permission.WRITE_MEDIA_STORAGE"/>
+         <permission name="android.permission.WRITE_SECURE_SETTINGS"/>
+         <permission name="android.permission.SUBSCRIBE_TO_KEYGUARD_LOCKED_STATE"/>
++        <permission name="oppo.permission.OPPO_COMPONENT_SAFE"/>
+      </privapp-permissions>
+ 
+     <!-- OPLUS gallery -->
+@@ -45,17 +46,23 @@
+         <permission name="android.permission.SCHEDULE_EXACT_ALARM"/>
+         <permission name="android.permission.WRITE_MEDIA_STORAGE"/>
+         <permission name="android.permission.WRITE_SECURE_SETTINGS"/>
+-    </privapp-permissions>
+-
+-    <!-- OPLUS exsystemservice -->
+-    <privapp-permissions package="com.oplus.exsystemservice">
+-        <permission name="android.permission.INTERACT_ACROSS_USERS" />
+-        <permission name="android.permission.CONNECTIVITY_INTERNAL" />
+-        <permission name="android.permission.WRITE_SECURE_SETTINGS"/>
+-        <permission name="android.permission.READ_PRIVILEGED_PHONE_STATE"/>
+-        <permission name="android.permission.REBOOT"/>
+-        <permission name="android.permission.MODIFY_PHONE_STATE"/>
+-        <permission name="android.permission.MANAGE_USERS"/>
+-        <permission name="android.permission.INSTALL_PACKAGES"/>
++        <permission name="com.oplus.permission.safe.AI_APP"/>
++        <permission name="com.oplus.permission.safe.APP_MANAGER"/>
++        <permission name="com.oplus.permission.safe.ASSISTANT"/>
++        <permission name="com.oplus.permission.safe.AUTHENTICATE"/>
++        <permission name="com.oplus.permission.safe.CAR_LINK"/>
++        <permission name="com.oplus.permission.safe.CONNECTIVITY"/>
++        <permission name="com.oplus.permission.safe.IOT"/>
++        <permission name="com.oplus.permission.safe.PRIVATE"/>
++        <permission name="com.oplus.permission.safe.PROTECT"/>
++        <permission name="com.oplus.permission.safe.READ_COMMON"/>
++        <permission name="com.oplus.permission.safe.SAU"/>
++        <permission name="com.oplus.permission.safe.SECURITY"/>
++        <permission name="com.oplus.permission.safe.SETTINGS"/>
++        <permission name="com.oplus.permission.safe.SETTINGS_SEARCH"/>
++        <permission name="com.oplus.permission.safe.WINDOW"/>
++        <permission name="com.oppo.permission.safe.PRIVATE"/>
++        <permission name="com.oppo.permission.safe.SAU"/>
++        <permission name="com.oppo.permission.safe.SECURITY"/>
+     </privapp-permissions>
+ </permissions>
+diff --git a/configs/sysconfig/hiddenapi-package-oplus-whitelist.xml b/configs/sysconfig/hiddenapi-package-oplus-whitelist.xml
+index e337329..d04b1a8 100644
+--- a/configs/sysconfig/hiddenapi-package-oplus-whitelist.xml
++++ b/configs/sysconfig/hiddenapi-package-oplus-whitelist.xml
+@@ -11,6 +11,5 @@ Do NOT include any apps that are updatable via Play Store!
+ <config>
+   <hidden-api-whitelisted-app package="com.oplus.appplatform"/>
+   <hidden-api-whitelisted-app package="com.oplus.camera"/>
+-  <hidden-api-whitelisted-app package="com.oplus.exsystemservice"/>
+   <hidden-api-whitelisted-app package="com.oneplus.gallery"/>
+ </config>
+diff --git a/extract-files.py b/extract-files.py
+index b575a41..91108a2 100755
+--- a/extract-files.py
++++ b/extract-files.py
+@@ -24,6 +24,14 @@ from pathlib import Path
+ import glob
+ import re
+ 
++from apk_fixups_op15 import (
++    blob_fixup_apktool_unpack_full,
++    blob_fixup_cryptoeng_manifest,
++    blob_fixup_cryptoeng_permissions_xml,
++)
++from apk_fixups_camera_op15 import blob_fixup_opluscamera_component_safe_permission
++from apk_fixups_gallery_op15 import blob_fixup_oppogallery_wallpaper_attach_intent
++
+ 
+ def lib_fixup_system_ext_suffix(lib: str, partition: str, *args, **kwargs):
+     """
+@@ -130,19 +138,6 @@ def blob_fixup_sdk_facebeauty(ctx, file, file_path, *args, tmp_dir=None, **kwarg
+             return
+ 
+ 
+-def blob_fixup_oppogallery_unpack(ctx, file, file_path, *args, tmp_dir=None, **kwargs):
+-    # Gallery manifest-only fix: skip smali decode/reassembly (-s). Only the
+-    # AndroidManifest is edited (strip undefined OEM permission gates), so the
+-    # original classes*.dex are kept verbatim. This sidesteps the version-specific
+-    # smali rejects that forced the whole OppoGallery2 apktool patch to be disabled
+-    # manifest re-encode succeeds where smali reassembly
+-    # of the obfuscated app did not. The 348 MB apk also makes a full smali decode
+-    # prohibitively heavy.
+-    if tmp_dir is None:
+-        return
+-    run_cmd([java_path, '-Xmx8g', '-jar', apktool_path, 'd', '-s', file_path, '-o', tmp_dir, '-f'])
+-
+-
+ lib_fixups: lib_fixups_user_type = {
+     # **lib_fixups already includes the clang RT ubsan and proto 3.9.1
+     # fixups that were previously handled by the bash helper functions
+@@ -170,23 +165,22 @@ blob_fixups = {
+     # strip undefined OEM permission gates. apktool unpack -> edit smali/manifest -> repack.
+     'system_ext/priv-app/OplusCamera/OplusCamera.apk': blob_fixup()
+         .call(blob_fixup_opluscamera_unpack)
++        .call(blob_fixup_opluscamera_component_safe_permission)
+         .call(blob_fixup_opluscamera_font)
+         .call(blob_fixup_opluscamera_strip_oem_perms)
+         .apktool_pack()
+         .stripzip(),
+-    # OppoGallery2.apk: strip the undefined OEM permission gates (oppo/oplus/heytap)
+-    # from its component declarations — same crash-class as the camera. The camera binds
+-    # the gallery's predecode service (OplusPreTileDecodeService), which gated on the
+-    # orphan oppo.permission.OPPO_COMPONENT_SAFE -> "Not allowed to bind to service"
+-    # SecurityException -> camera dies on open. This is the manifest half of the disabled
+-    # patches-gallery/0001 ("Get rid of oplus permissions"), re-applied via the same
+-    # version-independent regex strip used for the camera. Manifest-only (-s unpack), so
+-    # no smali reassembly (the reason #6 disabled the gallery patch set).
+     'system_ext/priv-app/OppoGallery2/OppoGallery2.apk': blob_fixup()
+-        .call(blob_fixup_oppogallery_unpack)
+-        .call(blob_fixup_opluscamera_strip_oem_perms)
++        .call(blob_fixup_apktool_unpack_full)
++        .call(blob_fixup_oppogallery_wallpaper_attach_intent)
+         .apktool_pack()
+         .stripzip(),
++    'system_ext/etc/permissions/vendor-oplus-hardware-cryptoeng.xml': blob_fixup()
++        .call(blob_fixup_cryptoeng_permissions_xml),
++    'odm/etc/permissions/vendor-oplus-hardware-cryptoeng.xml': blob_fixup()
++        .call(blob_fixup_cryptoeng_permissions_xml),
++    'odm/etc/vintf/manifest/manifest_oplus_cryptoeng.xml': blob_fixup()
++        .call(blob_fixup_cryptoeng_manifest),
+ }  # fmt: skip
+ 
+ namespace_imports = [
+diff --git a/proprietary-files.txt b/proprietary-files.txt
+index 75e3fae..879054e 100644
+--- a/proprietary-files.txt
++++ b/proprietary-files.txt
+@@ -57,9 +57,35 @@ my_product/product_overlay/framework/com.oplus.camera.unit.sdk.adapter.jar:syste
+ my_product/product_overlay/framework/com.oplus.camera.unit.sdk.jar:system_ext/framework/com.oplus.camera.unit.sdk.jar
+ system_ext/lib64/libpenguin.so:vendor/lib64/libpenguin.so
+ system_ext/lib64/libHeifEncoderWrapper.so
+-system_ext/lib64/libHeifWinBufExchg-jni.so
++system_ext/lib64/libHeifWinBufExchg-jni.so;DISABLE_CHECKELF
+ system_ext/lib64/libNativeWinBuffExchange.so
+ system_ext/lib64/liboplusheifwriter.so
++system_ext/etc/permissions/vendor-oplus-hardware-cryptoeng.xml
++system_ext/framework/vendor.oplus.hardware.cryptoeng-V1-java.jar
++system_ext/framework/vendor.oplus.hardware.cryptoeng-V1.0-java.jar
++system_ext/lib64/vendor.oplus.hardware.cryptoeng-V1-ndk.so
++system_ext/lib64/vendor.oplus.hardware.cryptoeng@1.0.so
++odm/bin/hw/vendor.oplus.hardware.cryptoeng@1.0-service;DISABLE_DEPS
++odm/etc/vintf/manifest/manifest_oplus_cryptoeng.xml
++odm/etc/permissions/vendor-oplus-hardware-cryptoeng.xml
++odm/firmware/secure_ta/cryptoeng.b00
++odm/firmware/secure_ta/cryptoeng.b01
++odm/firmware/secure_ta/cryptoeng.b02
++odm/firmware/secure_ta/cryptoeng.b03
++odm/firmware/secure_ta/cryptoeng.b04
++odm/firmware/secure_ta/cryptoeng.b05
++odm/firmware/secure_ta/cryptoeng.b06
++odm/firmware/secure_ta/cryptoeng.b07
++odm/firmware/secure_ta/cryptoeng.b08
++odm/firmware/secure_ta/cryptoeng.mdt
++odm/lib/lib_cryptoeng_api.so;DISABLE_DEPS
++odm/lib/libqsee_keybox_ca.so;DISABLE_DEPS
++odm/lib/vendor.oplus.hardware.cryptoeng-V1-ndk.so;MODULE_SUFFIX=_odm;DISABLE_DEPS
++odm/lib/vendor.oplus.hardware.cryptoeng@1.0.so;MODULE_SUFFIX=_odm;DISABLE_DEPS
++odm/lib64/lib_cryptoeng_api.so;DISABLE_DEPS
++odm/lib64/libqsee_keybox_ca.so;DISABLE_DEPS
++odm/lib64/vendor.oplus.hardware.cryptoeng-V1-ndk.so;MODULE_SUFFIX=_odm;DISABLE_DEPS
++odm/lib64/vendor.oplus.hardware.cryptoeng@1.0.so;MODULE_SUFFIX=_odm;DISABLE_DEPS
+ system_ext/priv-app/OplusAppPlatform/OplusAppPlatform.apk
+ 
+ my_product/lib64/libApsSuperEISPreviewJni.so:system_ext/lib64/libApsSuperEISPreviewJni.so
+diff --git a/sepolicy/vendor/file.te b/sepolicy/vendor/file.te
+index a7c5dc8..3aa1f64 100644
+--- a/sepolicy/vendor/file.te
++++ b/sepolicy/vendor/file.te
+@@ -1,5 +1,7 @@
+ type public_adsprpcd_file, file_type;
+ type proc_ufs_file, fs_type, proc_type;
++type vendor_cryptoeng_vendor_data_file, file_type, data_file_type;
++type vendor_hal_cryptoeng_oplus_exec, exec_type, vendor_file_type, file_type;
+ 
+ # OCCE shader-cache output tree (/mnt/occe/{shader,cache})
+ type occe_data_file, file_type, data_file_type;
+diff --git a/sepolicy/vendor/file_contexts b/sepolicy/vendor/file_contexts
+index f06ca4c..c3437e8 100644
+--- a/sepolicy/vendor/file_contexts
++++ b/sepolicy/vendor/file_contexts
+@@ -1,4 +1,5 @@
+ # Camera
++/(vendor|odm)/bin/hw/vendor\.oplus\.hardware\.cryptoeng@1\.0-service    u:object_r:vendor_hal_cryptoeng_oplus_exec:s0
+ /(vendor|odm)/lib(64)?/libalog\.so    u:object_r:same_process_hal_file:s0
+ /(vendor|odm)/lib(64)?/libalogencrypt\.so    u:object_r:same_process_hal_file:s0
+ /(vendor|odm)/lib(64)?/cache\.so    u:object_r:same_process_hal_file:s0
+@@ -535,6 +536,7 @@
+ /proc/devinfo/ufs u:object_r:proc_ufs_file:s0
+ 
+ /proc/ufs u:object_r:proc_ufs_file:s0
++/data/vendor_de/[0-9]+/cryptoeng(/.*)? u:object_r:vendor_cryptoeng_vendor_data_file:s0
+ # Hexagon DSP-side executable needed for Halide operation
+ # This is labeled as public_adsprpcd_file as it needs to be read by apps
+ # (e.g. Google Camera App)
+diff --git a/sepolicy/vendor/hal_cryptoeng_oplus.te b/sepolicy/vendor/hal_cryptoeng_oplus.te
+new file mode 100644
+index 0000000..1910be5
+--- /dev/null
++++ b/sepolicy/vendor/hal_cryptoeng_oplus.te
+@@ -0,0 +1,15 @@
++type vendor_hal_cryptoeng_oplus, domain;
++init_daemon_domain(vendor_hal_cryptoeng_oplus)
++
++add_service(vendor_hal_cryptoeng_oplus, vendor_hal_cryptoeng_oplus_service)
++add_hwservice(vendor_hal_cryptoeng_oplus, vendor_hal_cryptoeng_oplus_hwservice)
++binder_use(vendor_hal_cryptoeng_oplus)
++binder_call(vendor_hal_cryptoeng_oplus, servicemanager)
++
++allow vendor_hal_cryptoeng_oplus tee_device:chr_file rw_file_perms;
++allow vendor_hal_cryptoeng_oplus vendor_dmabuf_qseecom_heap_device:chr_file r_file_perms;
++allow vendor_hal_cryptoeng_oplus vendor_dmabuf_qseecom_ta_heap_device:chr_file r_file_perms;
++
++allow vendor_hal_cryptoeng_oplus hidl_base_hwservice:hwservice_manager add;
++allow vendor_hal_cryptoeng_oplus system_app:dir search;
++allow vendor_hal_cryptoeng_oplus system_app:file r_file_perms;
+diff --git a/sepolicy/vendor/hwservice.te b/sepolicy/vendor/hwservice.te
+new file mode 100644
+index 0000000..262b6fa
+--- /dev/null
++++ b/sepolicy/vendor/hwservice.te
+@@ -0,0 +1 @@
++type vendor_hal_cryptoeng_oplus_hwservice, hwservice_manager_type, protected_hwservice;
+diff --git a/sepolicy/vendor/hwservice_contexts b/sepolicy/vendor/hwservice_contexts
+new file mode 100644
+index 0000000..28b826f
+--- /dev/null
++++ b/sepolicy/vendor/hwservice_contexts
+@@ -0,0 +1 @@
++vendor.oplus.hardware.cryptoeng::ICryptoeng    u:object_r:vendor_hal_cryptoeng_oplus_hwservice:s0
+diff --git a/sepolicy/vendor/service.te b/sepolicy/vendor/service.te
+new file mode 100644
+index 0000000..37a077f
+--- /dev/null
++++ b/sepolicy/vendor/service.te
+@@ -0,0 +1 @@
++type vendor_hal_cryptoeng_oplus_service, hal_service_type, protected_service, service_manager_type;
+diff --git a/sepolicy/vendor/service_contexts b/sepolicy/vendor/service_contexts
+new file mode 100644
+index 0000000..1fecce8
+--- /dev/null
++++ b/sepolicy/vendor/service_contexts
+@@ -0,0 +1 @@
++vendor.oplus.hardware.cryptoeng.ICryptoeng/default    u:object_r:vendor_hal_cryptoeng_oplus_service:s0
+diff --git a/sepolicy/vendor/system_app.te b/sepolicy/vendor/system_app.te
+new file mode 100644
+index 0000000..80d4113
+--- /dev/null
++++ b/sepolicy/vendor/system_app.te
+@@ -0,0 +1,4 @@
++allow system_app vendor_hal_cryptoeng_oplus_service:service_manager find;
++allow system_app vendor_hal_cryptoeng_oplus_hwservice:hwservice_manager find;
++binder_call(system_app, vendor_hal_cryptoeng_oplus)
++get_prop(system_app, system_fingerprint_prop)
+diff --git a/sepolicy/vendor/tee.te b/sepolicy/vendor/tee.te
+new file mode 100644
+index 0000000..62f15f3
+--- /dev/null
++++ b/sepolicy/vendor/tee.te
+@@ -0,0 +1,2 @@
++allow tee vendor_cryptoeng_vendor_data_file:dir create_dir_perms;
++allow tee vendor_cryptoeng_vendor_data_file:file create_file_perms;
+-- 
+2.50.1 (Apple Git-155)
+

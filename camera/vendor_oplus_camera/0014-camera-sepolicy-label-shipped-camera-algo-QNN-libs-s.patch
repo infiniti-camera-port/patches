@@ -1,0 +1,96 @@
+From 49ddcc9fa7ac17a4c6dc560e5e2b54a7bd25fd71 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Wed, 1 Jul 2026 23:53:34 -0600
+Subject: [PATCH 14/19] camera: sepolicy: label shipped camera/algo/QNN libs
+ same_process_hal_file
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Our vendor file_contexts (an OP13-vintage list) left 41 OEM-shipped odm/vendor
+algo libraries at the vendor_file default. App-domain consumers (OppoGallery2 =
+platform_app) have no vendor_file:file access, so dlopen'ing them returns EACCES
+— which the bionic linker reports as "not found". This silently breaks the
+Gallery photo-editor face-retouch: /odm/lib64/libvega_common.so (the SM8850
+face-info/FFD engine) fails to load, faceInfoRegister returns state=-3, and
+ipuFaceEditProcess aborts ("faceinfo uninited") doing nothing. The portrait /
+HDR-transform + segment render path hits the same wall (libOPAlgoCamHDRTransform*,
+libOPAlgoCamSegment, libOPAlgoCamPortraitHDRTransform).
+
+Add the same_process_hal_file labels OOS16.0.8 gives these libs (lines copied
+verbatim from the stock vendor_file_contexts), scoped to the ones actually
+shipped and currently vendor_file on our build: libvega_common + the QNN-v81
+backend (aiframe/* + cdsp signed/unsigned V81 skels + libaiboost_qnn_external_delegate),
+the retouch bin-generators (libcreatebinFor{Face,Base}retouch), the OPAlgoCam
+HDR/portrait/segment libs, and the rest of the shipped-but-unlabeled camera algo
+set. Base/QCOM libs are already labeled by the base/qcom sepolicy and are left
+untouched.
+
+Confirmed on-device: setenforce 0 restores face-retouch. Requires a rebuild
+(labels bake into the odm/vendor images).
+
+Change-Id: Ide54e2a7740aed94c9f2803ba541ed5ab0ac3f1a
+---
+ sepolicy/vendor/file_contexts | 49 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 49 insertions(+)
+
+diff --git a/sepolicy/vendor/file_contexts b/sepolicy/vendor/file_contexts
+index c3437e8..6e8161a 100644
+--- a/sepolicy/vendor/file_contexts
++++ b/sepolicy/vendor/file_contexts
+@@ -545,3 +545,52 @@
+ # OCCE shader-cache precompiler service + its /mnt/occe cache tree
+ /(vendor|odm)/bin/occe_create                            u:object_r:occe_create_exec:s0
+ /mnt/occe(/.*)?                                          u:object_r:occe_data_file:s0
++
++# --- OOS-parity: label OEM-shipped camera/algo/QNN(v81) odm/vendor libs same_process_hal_file.
++# These blobs ship on the device but our (OP13-vintage) list left them at the vendor_file default,
++# so app-domain consumers (OppoGallery2 = platform_app) hit EACCES on dlopen. That silently breaks
++# the Gallery photo-editor face-retouch (libvega_common = SM8850 face-info/FFD engine) and the
++# portrait/HDR-transform + segment renders. Lines copied verbatim from OOS16.0.8 vendor_file_contexts;
++# scoped to libs actually shipped + currently vendor_file on our build. Confirmed on-device: setenforce 0
++# restores face-retouch. Needs a rebuild (labels bake into the odm/vendor images).
++/(vendor|odm)/lib(64)?/aiframe/cdsp/signed/libQnnHtpV81Skel\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/aiframe/cdsp/unsigned/libQnnHtpV81Skel\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/aiframe/libQnnHtpPrepare\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/aiframe/libQnnHtpV81Stub\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/aiframe/libQnnHtp\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/aiframe/libQnnSystem\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/aiframe/libaiboost_qnn_external_delegate\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/aiframe/libqcom_llm\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/aiframe/libtransformer_lite\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libAF\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libCS\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libDocRectification\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libOPAlgoCamHDRTransformCamera\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libOPAlgoCamHDRTransformQuick\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libOPAlgoCamPortraitHDRTransform\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libOPAlgoCamSegment\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libOplusPDCore\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libOpo_awb\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libQnnHtpV81CalculatorStub\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libQnnHtpV81Stub\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libSpecRecon\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libaecCustom\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libaiboost\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libaiboost_llm\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libapsdngsdk\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libcreateFDCLitecachebin\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libcreateFDCcachebin\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libcreatebinForBaseretouch\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libcreatebinForFaceretouch\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libdlrmsc\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libdngsdkwrapper\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libhcsfwk\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libhcsutils\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libocce3a\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libopluspdparam\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libosensenativeproxy_client\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libremosaic_wrapper\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libremosaiclib\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/libvega_common\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/rfsa/adsp/libQnnHtpV81Skel\.so    u:object_r:same_process_hal_file:s0
++/(vendor|odm)/lib(64)?/rfsa/adsp/libQnnHtpV81\.so    u:object_r:same_process_hal_file:s0
+-- 
+2.50.1 (Apple Git-155)
+

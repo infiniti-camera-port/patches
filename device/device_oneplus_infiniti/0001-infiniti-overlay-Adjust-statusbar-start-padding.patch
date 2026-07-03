@@ -1,0 +1,30 @@
+From 2b44de657c6b0281397c10e05bf5f819ce908924 Mon Sep 17 00:00:00 2001
+From: LuK1337 <priv.luk@gmail.com>
+Date: Sat, 30 May 2026 14:50:13 +0200
+Subject: [PATCH 01/16] infiniti: overlay: Adjust statusbar start padding
+
+Change-Id: I95813b7410cb30e7f3d69dbb86f3a57a4e3915da
+(cherry picked from commit 36ecbd6e65f323ae304ee4c6c6e1b8ab85ba3d7c)
+---
+ overlay/OPlusSystemUIResTarget/res/values/dimens.xml | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/overlay/OPlusSystemUIResTarget/res/values/dimens.xml b/overlay/OPlusSystemUIResTarget/res/values/dimens.xml
+index aa4227f..c1b9a6c 100644
+--- a/overlay/OPlusSystemUIResTarget/res/values/dimens.xml
++++ b/overlay/OPlusSystemUIResTarget/res/values/dimens.xml
+@@ -5,7 +5,10 @@
+ -->
+ <resources>
+     <!-- the padding on the start of the statusbar -->
+-    <dimen name="status_bar_padding_start">18dp</dimen>
++    <dimen name="status_bar_padding_start">24dp</dimen>
++
++    <!-- Margin on the left side of the carrier text on Keyguard -->
++    <dimen name="keyguard_carrier_text_margin">@dimen/status_bar_padding_start</dimen>
+ 
+     <!-- Location on the screen of the center of the physical power button. This is a reasonable
+     default that should be overridden by device-specific overlays. -->
+-- 
+2.50.1 (Apple Git-155)
+

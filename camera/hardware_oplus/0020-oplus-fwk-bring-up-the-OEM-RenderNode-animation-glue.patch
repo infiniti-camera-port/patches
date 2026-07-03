@@ -1,0 +1,472 @@
+From d03c433cadea6a507f5958aef428cdb6c7051bd2 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Thu, 2 Jul 2026 23:58:27 +0000
+Subject: [PATCH 20/24] oplus-fwk: bring up the OEM RenderNode animation glue
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Implement the OEM async/spring animation helpers the OplusUI stack
+drives from the render thread:
+
+  * OplusAsyncAnimatorUtils view/rendernode setters.
+  * OplusRenderNodeAnimator + IRtAnimationTarget spring animations,
+    driven on the UI thread.
+
+Fixes the graphics-side (G) animation regressions.
+
+Change-Id: I9eeb531adcf6319354c5427c7171a4e67008853b
+(cherry picked from commit 054d3e36ac1b9af6ba365b2c0c8db6fb7d4e5fe1)
+
+Ledger: hardware_oplus.md Accepted Group C row 9 (054d3e36)
+Stub-matrix: task-9-stub-inventory.md row K11 — consumer: OppoGallery2 UI animations (OplusRenderNodeAnimator/OplusAsyncAnimatorUtils, dex-scan); location: members on M13 classes in the boot jar
+Change-Id: I89fd9589e9864af9a5d90f83b406d2c80a92adbc
+---
+ .../animation/OplusAsyncAnimatorUtils.java    | 127 ++++++++++++++----
+ .../com/oplus/view/IRtAnimationTarget.java    |  64 ++++++++-
+ .../oplus/view/OplusRenderNodeAnimator.java   | 125 ++++++++++++++++-
+ 3 files changed, 281 insertions(+), 35 deletions(-)
+
+diff --git a/oplus-fwk/src/com/oplus/animation/OplusAsyncAnimatorUtils.java b/oplus-fwk/src/com/oplus/animation/OplusAsyncAnimatorUtils.java
+index 8d2372be..be203525 100644
+--- a/oplus-fwk/src/com/oplus/animation/OplusAsyncAnimatorUtils.java
++++ b/oplus-fwk/src/com/oplus/animation/OplusAsyncAnimatorUtils.java
+@@ -5,14 +5,23 @@
+ 
+ package com.oplus.animation;
+ 
++import android.graphics.Outline;
+ import android.graphics.Rect;
+ import android.graphics.RenderEffect;
+ import android.graphics.RenderNode;
+ import android.view.View;
++import android.view.ViewOutlineProvider;
+ 
+ /**
+- * Stub for the OEM RenderThread-side async view mutator utility. Every method
+- * reports failure (false) so consumers fall back to the ordinary View setters.
++ * UI-thread port of the OEM RenderThread-side async view mutator utility
++ * (OOS16.0.8 oplus-framework.jar). Every OEM method stages a property on the
++ * view's RenderNode via hidden android.view.OplusRenderNodeAnimator natives;
++ * the public-API equivalent is the same property set through the ordinary
++ * View/RenderNode setters on the UI thread — which is where the feeding
++ * springs/animators run on LineageOS (see com.oplus.view.OplusRenderNodeAnimator).
++ * All shipped callers (OppoGallery2 incl. bundled COUI) discard the boolean
++ * and rely purely on the side effect; return true where the property is
++ * applied, false where only an OEM-only native could apply it.
+  */
+ public class OplusAsyncAnimatorUtils {
+ 
+@@ -20,90 +29,160 @@ public class OplusAsyncAnimatorUtils {
+     }
+ 
+     public static boolean offsetLeftAndRight(View view, int offset) {
+-        return false;
++        // OEM: nOffsetLeftAndRight on the render node.
++        view.offsetLeftAndRight(offset);
++        return true;
+     }
+ 
+     public static boolean offsetTopAndBottom(View view, int offset) {
+-        return false;
++        // OEM: nOffsetTopAndBottom on the render node.
++        view.offsetTopAndBottom(offset);
++        return true;
+     }
+ 
+     public static boolean setAlpha(RenderNode renderNode, float alpha) {
+-        return false;
++        // OEM: nSetAlpha(renderNode.mNativeRenderNode, alpha). The public
++        // RenderNode.setAlpha stages the same value; OppoGallery2's own non-RT
++        // branch (PhotoBackgroundDrawable.setForegroundAlpha) uses exactly this
++        // call on the same RenderNode.
++        return renderNode.setAlpha(alpha);
+     }
+ 
+     public static boolean setAlpha(View view, float alpha) {
+-        return false;
++        // OEM: syncs the UI-side alpha then nSetAlpha on the render node; the
++        // public View.setAlpha performs both (field + render-node push +
++        // invalidation). Same call COUI's bundled NormalAnimationExecutor makes.
++        view.setAlpha(alpha);
++        return true;
+     }
+ 
+     public static boolean setBackgroundRenderEffect(View view, RenderEffect renderEffect) {
++        // OEM-only native (nSetBackgroundRenderEffect): applies a RenderEffect to
++        // the background layer only; AOSP has no background-only effect channel.
++        // No shipped caller. Report "async apply unavailable".
+         return false;
+     }
+ 
+     public static boolean setClipRect(View view, Rect rect) {
+-        return false;
++        // OEM: null rect -> nSetClipBoundsEmpty (clear clip), else
++        // nSetClipBounds(l,t,r,b). View.setClipBounds(null) clears the clip —
++        // same shape.
++        view.setClipBounds(rect);
++        return true;
+     }
+ 
+     public static boolean setClipToBounds(View view, boolean clipToBounds) {
++        // OEM-only native (nSetClipToBounds): per-node clip-to-bounds flag with
++        // no public per-View equivalent. No shipped caller. Report unavailable.
+         return false;
+     }
+ 
+     public static boolean setElevation(View view, float elevation) {
+-        return false;
++        // OEM: nSetElevation on the render node.
++        view.setElevation(elevation);
++        return true;
+     }
+ 
+     public static boolean setLeftTopRightBottom(View view, int left, int top, int right, int bottom) {
+-        return false;
++        // OEM: nSetLeftTopRightBottom. View#setLeftTopRightBottom is
++        // public-@hide (used by ObjectAnimator for bounds animation); available
++        // because oplus-fwk compiles against full platform APIs.
++        view.setLeftTopRightBottom(left, top, right, bottom);
++        return true;
+     }
+ 
+     public static boolean setOutlineNone(View view) {
+-        return false;
++        // OEM: nSetOutlineNone on the render node.
++        view.setOutlineProvider(null);
++        return true;
+     }
+ 
+     public static boolean setOutlineRoundRect(View view, Rect rect, float radius, float alpha) {
+-        return false;
+-    }
+-
+-    public static boolean setOutlineSmoothRoundRect(View view, Rect rect, float radius, float weight, float alpha) {
++        // OEM: nSetOutlineRoundRect(node, rect.l, rect.t, rect.r, rect.b,
++        // radius, alpha). A ViewOutlineProvider integrates with clipToOutline
++        // and shadows identically; setOutlineProvider triggers
++        // invalidateOutline() itself. The rect is copied because the caller
++        // (PhotoClipBoundTransitionView) mutates it per frame.
++        final Rect bounds = new Rect(rect);
++        final float outlineRadius = radius;
++        final float outlineAlpha = alpha;
++        view.setOutlineProvider(new ViewOutlineProvider() {
++            @Override
++            public void getOutline(View v, Outline outline) {
++                outline.setRoundRect(bounds, outlineRadius);
++                outline.setAlpha(outlineAlpha);
++            }
++        });
++        return true;
++    }
++
++    public static boolean setOutlineSmoothRoundRect(View view, Rect rect, float radius, float alpha, float weight) {
++        // OEM-only native (nSetOutlineSmoothRoundRect): "smooth corner"
++        // (squircle) outline — the smoothing weight has no AOSP counterpart.
++        // Param order fixed to the OEM (radius, alpha, weight); the old stub
++        // declared (radius, weight, alpha). No shipped caller. Report
++        // unavailable.
+         return false;
+     }
+ 
+     public static boolean setOutlineSpotShadowColor(View view, int color) {
+-        return false;
++        // OEM: nSetSpotShadowColor on the render node.
++        view.setOutlineSpotShadowColor(color);
++        return true;
+     }
+ 
+     public static boolean setRenderEffect(View view, RenderEffect renderEffect) {
+-        return false;
++        // OEM: nSetRenderEffect on the render node.
++        view.setRenderEffect(renderEffect);
++        return true;
+     }
+ 
+     public static boolean setRotation(View view, float rotation) {
+-        return false;
++        // OEM: nSetRotation on the render node.
++        view.setRotation(rotation);
++        return true;
+     }
+ 
+     public static boolean setRotationX(View view, float rotationX) {
+-        return false;
++        // OEM: nSetRotationX on the render node.
++        view.setRotationX(rotationX);
++        return true;
+     }
+ 
+     public static boolean setRotationY(View view, float rotationY) {
+-        return false;
++        // OEM: nSetRotationY on the render node.
++        view.setRotationY(rotationY);
++        return true;
+     }
+ 
+     public static boolean setScaleX(View view, float scaleX) {
+-        return false;
++        // OEM: nSetScaleX on the render node; COUI's bundled non-RT fallback
++        // (NormalAnimationExecutor) uses the plain View setter.
++        view.setScaleX(scaleX);
++        return true;
+     }
+ 
+     public static boolean setScaleY(View view, float scaleY) {
+-        return false;
++        // OEM: nSetScaleY on the render node.
++        view.setScaleY(scaleY);
++        return true;
+     }
+ 
+     public static boolean setTranslationX(View view, float translationX) {
+-        return false;
++        // OEM: nSetTranslationX on the render node.
++        view.setTranslationX(translationX);
++        return true;
+     }
+ 
+     public static boolean setTranslationY(View view, float translationY) {
+-        return false;
++        // OEM: nSetTranslationY on the render node.
++        view.setTranslationY(translationY);
++        return true;
+     }
+ 
+     public static boolean setTranslationZ(View view, float translationZ) {
+-        return false;
++        // OEM: nSetTranslationZ on the render node.
++        view.setTranslationZ(translationZ);
++        return true;
+     }
+ }
+diff --git a/oplus-fwk/src/com/oplus/view/IRtAnimationTarget.java b/oplus-fwk/src/com/oplus/view/IRtAnimationTarget.java
+index c57c0eef..7c97580f 100644
+--- a/oplus-fwk/src/com/oplus/view/IRtAnimationTarget.java
++++ b/oplus-fwk/src/com/oplus/view/IRtAnimationTarget.java
+@@ -1,9 +1,63 @@
++/*
++ * SPDX-FileCopyrightText: 2025 The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
+ package com.oplus.view;
+ 
+-/* Closure stub. Referenced by OppoGallery2 only as a parameter type of
+- * OplusRenderNodeAnimator.createRtAnimator(IRtAnimationTarget, View). No
+- * members are referenced, so a plain empty interface is sufficient. The OEM
+- * type extends com.oplus.view.ITarget, but nothing in the shipped consumers
+- * references ITarget, so it is intentionally not pulled in. */
++/**
++ * RenderThread animation target surface consumed by OppoGallery2 (COUIRtAnimationImpl).
++ * The OEM declares these members on com.oplus.view.ITarget with IRtAnimationTarget as an
++ * empty sub-interface; nothing in shipped consumers references ITarget, so the surface is
++ * flattened here. Default bodies (including exception messages) mirror the OEM ITarget.
++ */
+ public interface IRtAnimationTarget {
++
++    void start();
++
++    void end();
++
++    void cancel();
++
++    boolean doFrame(long frameTime);
++
++    boolean isRunning();
++
++    default void animateToFinalPosition(float finalPosition) {
++        throw new RuntimeException("Only SpringAnimation can skipToEnd, but "
++                + getClass().getName());
++    }
++
++    default void skipToEnd() {
++        throw new RuntimeException("Only SpringAnimation can skipToEnd, but "
++                + getClass().getName());
++    }
++
++    default void reverse() {
++        throw new RuntimeException("Only animator can reverse, but " + getClass().getName());
++    }
++
++    default void setAnimationHandler() {
++        throw new RuntimeException("animationHandler should be provided by target");
++    }
++
++    default void setStartDelay(long startDelay) {
++        throw new RuntimeException("startDelay should be provided by target");
++    }
++
++    default long getStartDelay() {
++        throw new RuntimeException("startDelay should be provided by target");
++    }
++
++    default void setDuration(long duration) {
++        throw new RuntimeException("duration should be provided by target");
++    }
++
++    default long getDuration() {
++        throw new RuntimeException("duration should be provided by target");
++    }
++
++    default long getTotalDuration() {
++        throw new RuntimeException("totalDuration should be provided by target");
++    }
+ }
+diff --git a/oplus-fwk/src/com/oplus/view/OplusRenderNodeAnimator.java b/oplus-fwk/src/com/oplus/view/OplusRenderNodeAnimator.java
+index df2ebf12..1b9a349a 100644
+--- a/oplus-fwk/src/com/oplus/view/OplusRenderNodeAnimator.java
++++ b/oplus-fwk/src/com/oplus/view/OplusRenderNodeAnimator.java
+@@ -1,30 +1,143 @@
++/*
++ * SPDX-FileCopyrightText: 2025 The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
+ package com.oplus.view;
+ 
+ import android.animation.Animator;
++import android.animation.TimeInterpolator;
+ import android.animation.ValueAnimator;
+ import android.view.View;
+ 
+-/* Closure stub. Only the static factory/helper methods referenced by
+- * OppoGallery2 are provided. Factories return an inert (no-op) ValueAnimator
+- * rather than null so consumers that immediately drive the returned Animator
+- * do not NPE; getFrameNumber returns 0. */
++/**
++ * UI-thread port of the OEM RenderThread animator facade. Only the four statics referenced
++ * by OppoGallery2 are provided. The OEM runs the supplied target/animator on the RenderThread
++ * via a hidden native value animator that pulses ITarget#doFrame() every RT frame; LineageOS
++ * has no such pump, so the same springs/animators run on their default (UI-thread,
++ * Choreographer-driven) handlers instead — matching COUI's own bundled non-RenderThread
++ * fallback (NormalAnimationExecutor).
++ */
+ public class OplusRenderNodeAnimator {
+ 
+     private OplusRenderNodeAnimator() {
+     }
+ 
+     public static void animateToFinalPosition(Animator animator, float value) {
++        // OEM: instanceof android.view.OplusRenderValueAnimator -> state PENDING; the next
++        // RenderThread frame invokes target.animateToFinalPosition(value). Net effect for the
++        // shipped spring targets: the spring retargets and starts if not already running.
++        if (animator instanceof RtTargetAnimator) {
++            ((RtTargetAnimator) animator).animateToFinalPosition(value);
++        }
+     }
+ 
+     public static Animator createRenderValueAnimator(Animator animator, View view) {
+-        return ValueAnimator.ofFloat(0f, 1f);
++        // OEM wraps 'animator' in an ITarget adapter (AnimatorTarget) that delegates
++        // start/end/cancel/isRunning/duration/delay straight back to 'animator' and pulses its
++        // frames from the RenderThread. Without the RT pump, the exact functional equivalent
++        // is the animator itself, self-driven by the UI-thread Choreographer: the sole shipped
++        // caller attaches its listeners to 'animator' before wrapping, so every callback fires
++        // natively. 'view' only selects the RT timeline on OEM and has no UI-thread analogue.
++        return animator != null ? animator : ValueAnimator.ofFloat(0f, 1f);
+     }
+ 
+     public static Animator createRtAnimator(IRtAnimationTarget target, View view) {
+-        return ValueAnimator.ofFloat(0f, 1f);
++        if (target == null || view == null) {
++            // OEM parity: returns null when either argument is null.
++            return null;
++        }
++        // Deliberate deviation from the OEM sequence: target.setAnimationHandler() is NOT
++        // called. On OEM it parks the target's spring on a no-op handler (the RenderThread
++        // pump takes over frame delivery); with no pump on LineageOS that would freeze the
++        // spring forever. Skipping the call keeps the spring on its default self-driving
++        // Choreographer handler, which is exactly what COUI's NormalAnimationExecutor does
++        // when the RenderThread path is unavailable.
++        return new RtTargetAnimator(target);
+     }
+ 
+     public static long getFrameNumber(Animator animator) {
++        // OEM: RenderThread frame number of the native animator (0 until the first RT frame).
++        // No RT frames exist here; the only shipped consumer is log/telemetry-only.
+         return 0L;
+     }
++
++    /**
++     * UI-thread bridge exposing the OEM wrapper's Animator surface over an IRtAnimationTarget.
++     * OEM defers target calls to the next RenderThread frame; this bridge issues them
++     * synchronously — same net effect, one frame earlier. Shipped consumers only use
++     * start()/cancel()/isRunning() plus the static animateToFinalPosition().
++     */
++    private static final class RtTargetAnimator extends Animator {
++
++        private final IRtAnimationTarget mTarget;
++        private boolean mCanceled;
++
++        RtTargetAnimator(IRtAnimationTarget target) {
++            mTarget = target;
++        }
++
++        void animateToFinalPosition(float value) {
++            mCanceled = false;
++            mTarget.animateToFinalPosition(value);
++        }
++
++        @Override
++        public void start() {
++            mCanceled = false;
++            mTarget.start();
++        }
++
++        @Override
++        public void end() {
++            // OEM parity: end() is ignored while in the CANCEL state
++            // (android.view.OplusRenderValueAnimator#end, state != CANCEL guard).
++            if (!mCanceled) {
++                mTarget.end();
++            }
++        }
++
++        @Override
++        public void cancel() {
++            mCanceled = true;
++            mTarget.cancel();
++        }
++
++        @Override
++        public boolean isRunning() {
++            return mTarget.isRunning();
++        }
++
++        @Override
++        public long getStartDelay() {
++            return mTarget.getStartDelay();
++        }
++
++        @Override
++        public void setStartDelay(long startDelay) {
++            mTarget.setStartDelay(startDelay);
++        }
++
++        @Override
++        public Animator setDuration(long duration) {
++            mTarget.setDuration(duration);
++            return this;
++        }
++
++        @Override
++        public long getDuration() {
++            return mTarget.getDuration();
++        }
++
++        @Override
++        public long getTotalDuration() {
++            return mTarget.getTotalDuration();
++        }
++
++        @Override
++        public void setInterpolator(TimeInterpolator interpolator) {
++            // OEM: interpolators do not apply to ITarget-driven springs; no shipped caller
++            // sets one on this object.
++        }
++    }
+ }
+-- 
+2.50.1 (Apple Git-155)
+

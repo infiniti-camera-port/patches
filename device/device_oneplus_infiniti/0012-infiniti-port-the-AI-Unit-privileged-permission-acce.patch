@@ -1,0 +1,93 @@
+From cebbed119774805587f79bc074b9f1d020b4601d Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Thu, 2 Jul 2026 17:57:57 -0600
+Subject: [PATCH 12/16] infiniti: port the AI Unit privileged-permission access
+ control
+
+Two OOS-only permission surfaces the AI Unit stack needs, ported to the
+AOSP formats LineageOS parses:
+
+- AON perception service: stock grants com.aiunit.aon the CAMERA runtime
+  permission via my_product/etc/permissions/oplus_aon_grant_permissions_list.xml,
+  an OOS-only grant-list format LineageOS does not read. Port it as an AOSP
+  default-permissions exceptions file (fixed=false, user-revocable) so
+  DefaultPermissionGrantPolicy pregrants CAMERA on first boot, now that
+  AONService is staged as a product prebuilt in vendor.
+
+- StdID: com.oplus.stdid (staged in vendor for the AIUnit CloudConfig
+  handshake) is a system_ext priv-app requesting the privileged permission
+  android.permission.INTERACT_ACROSS_USERS; without an allowlist entry the
+  enforce-mode privapp check rejects it at boot. Port the single entry stock
+  ships in system_ext/etc/permissions/privapp-permissions-oplus-common.xml,
+  installed to the same partition as the app per the allowlist partition-match
+  rule.
+
+(cherry picked from commit 2ee41aad4a2528457d88f7f1f262a2e44b3fed70)
+---
+ .../default-permissions-com.aiunit.aon.xml        | 15 +++++++++++++++
+ .../privapp-permissions-com.oplus.stdid.xml       | 14 ++++++++++++++
+ device.mk                                         |  5 +++++
+ 3 files changed, 34 insertions(+)
+ create mode 100644 configs/permissions/default-permissions-com.aiunit.aon.xml
+ create mode 100644 configs/permissions/privapp-permissions-com.oplus.stdid.xml
+
+diff --git a/configs/permissions/default-permissions-com.aiunit.aon.xml b/configs/permissions/default-permissions-com.aiunit.aon.xml
+new file mode 100644
+index 0000000..cf2edd7
+--- /dev/null
++++ b/configs/permissions/default-permissions-com.aiunit.aon.xml
+@@ -0,0 +1,15 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++     Copyright (C) 2026 The LineageOS Project
++     SPDX-License-Identifier: Apache-2.0
++
++     AOSP-format replacement for the stock OOS 16.0.8 grant list
++     my_product/etc/permissions/oplus_aon_grant_permissions_list.xml (an
++     OOS-specific format LineageOS does not parse), which default-grants the
++     camera runtime permission to the AON always-on perception service.
++-->
++<exceptions>
++    <exception package="com.aiunit.aon">
++        <permission name="android.permission.CAMERA" fixed="false"/>
++    </exception>
++</exceptions>
+diff --git a/configs/permissions/privapp-permissions-com.oplus.stdid.xml b/configs/permissions/privapp-permissions-com.oplus.stdid.xml
+new file mode 100644
+index 0000000..f9d998b
+--- /dev/null
++++ b/configs/permissions/privapp-permissions-com.oplus.stdid.xml
+@@ -0,0 +1,14 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++     Copyright (C) 2026 The LineageOS Project
++     SPDX-License-Identifier: Apache-2.0
++
++     Port of the com.oplus.stdid entry from stock OOS 16.0.8
++     system_ext/etc/permissions/privapp-permissions-oplus-common.xml.
++     Same partition as the app (system_ext) per the allowlist partition rule.
++-->
++<permissions>
++    <privapp-permissions package="com.oplus.stdid">
++        <permission name="android.permission.INTERACT_ACROSS_USERS"/>
++    </privapp-permissions>
++</permissions>
+diff --git a/device.mk b/device.mk
+index 8096756..d21a123 100644
+--- a/device.mk
++++ b/device.mk
+@@ -8,6 +8,11 @@
+ PRODUCT_AAPT_CONFIG := normal
+ PRODUCT_AAPT_PREF_CONFIG := xxxhdpi
+ 
++# AI Unit
++PRODUCT_COPY_FILES += \
++    $(LOCAL_PATH)/configs/permissions/default-permissions-com.aiunit.aon.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/default-permissions/default-permissions-com.aiunit.aon.xml \
++    $(LOCAL_PATH)/configs/permissions/privapp-permissions-com.oplus.stdid.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/permissions/privapp-permissions-com.oplus.stdid.xml
++
+ # Audio
+ PRODUCT_COPY_FILES += \
+     $(LOCAL_PATH)/configs/audio/audio_module_config_primary.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio/audio_module_config_primary.xml \
+-- 
+2.50.1 (Apple Git-155)
+

@@ -1,0 +1,136 @@
+From c6ff01b9082e97217b167f3ad08c35097c91b200 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Thu, 2 Jul 2026 17:58:11 -0600
+Subject: [PATCH 13/16] infiniti: ship the AI Unit stack
+
+Bring up the OOS AI Unit (on-device + cloud AIGC) stack, canonicalized as
+extract-files entries against the CPH2745 OOS 16.0.8 (11.A.42) dump:
+
+- AIUnit (product priv-app, presigned) + its 9 app-dir arm64 libs
+- AIMemory (product app, presigned) + its 8 app-dir arm64 libs
+- AONService (product app, presigned) + its 7 app-dir arm64 libs and the
+  aon.frameworkres static RRO
+- StdID (system_ext priv-app; platform re-sign, its sharedUserId
+  android.uid.system rules out presigned)
+- RomUpdate (product app, presigned)
+
+The apks embed no native libs, so PM derives the app ABI from the bundled
+app-dir lib directory; no soong prebuilt module type installs into an app
+dir, so the arm64 libs ride PRODUCT_COPY_FILES. Set
+BUILD_BROKEN_ELF_PREBUILT_PRODUCT_COPY_FILES to disable the ELF-in-copy-files
+lint that would otherwise reject them (the check has no per-file allowlist).
+
+The build system refuses prebuilt apks in PRODUCT_COPY_FILES, so the static
+RRO cannot ride the copy path: its extract entry is
+EXTRACT_ONLY;FILEGROUP=aon_frameworkres_overlay_apk (the blob is shipped by
+the vendor regeneration, no copy rule) and a prebuilt_overlay module here
+consumes the filegroup, keeping the byte-identical presigned apk on the
+product/overlay OMS scan path.
+
+Regenerates: proprietary_vendor_oneplus_infiniti "infiniti: ai:" series
+(AIUnit / AIMemory / AONService+RRO / StdID+RomUpdate).
+
+(cherry picked from commit 9fc512b121c8bc059e6f5e9be3ca644427a820f6)
+---
+ Android.bp            | 14 ++++++++++++++
+ BoardConfig.mk        |  7 +++++++
+ device.mk             |  3 +++
+ proprietary-files.txt | 32 ++++++++++++++++++++++++++++++++
+ 4 files changed, 56 insertions(+)
+
+diff --git a/Android.bp b/Android.bp
+index 9515b25..3824adc 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -1,2 +1,16 @@
+ soong_namespace {
++    imports: [
++        "vendor/oneplus/infiniti",
++    ],
++}
++
++// The AON framework-res static RRO must land in product/overlay (the OMS
++// partition scan path, as on stock). The build system refuses apks in
++// PRODUCT_COPY_FILES and extract-utils has no overlay-dir package writer,
++// so consume the extract-generated filegroup via prebuilt_overlay.
++prebuilt_overlay {
++    name: "aon.frameworkres.overlay.product",
++    src: ":aon_frameworkres_overlay_apk",
++    filename: "aon.frameworkres.overlay.product.apk",
++    product_specific: true,
+ }
+diff --git a/BoardConfig.mk b/BoardConfig.mk
+index 1e0e7b8..046642a 100644
+--- a/BoardConfig.mk
++++ b/BoardConfig.mk
+@@ -40,3 +40,10 @@ include vendor/oneplus/infiniti/BoardConfigVendor.mk
+ 
+ # Camera (Oplus camera port) — OEM camera sets vendor props outside the standard namespace
+ BUILD_BROKEN_VENDOR_PROPERTY_NAMESPACE := true
++
++# AI Unit — the stock app-dir JNI payloads (product/{priv-app,app}/*/lib/arm64)
++# ship via PRODUCT_COPY_FILES: the apks embed no native libs and PM derives the
++# app ABI from the bundled lib dir (the OOS-stock layout); no soong prebuilt
++# module type can install into an app dir. Only disables the ELF-in-copy-files
++# lint.
++BUILD_BROKEN_ELF_PREBUILT_PRODUCT_COPY_FILES := true
+diff --git a/device.mk b/device.mk
+index d21a123..96e7811 100644
+--- a/device.mk
++++ b/device.mk
+@@ -9,6 +9,9 @@ PRODUCT_AAPT_CONFIG := normal
+ PRODUCT_AAPT_PREF_CONFIG := xxxhdpi
+ 
+ # AI Unit
++PRODUCT_PACKAGES += \
++    aon.frameworkres.overlay.product
++
+ PRODUCT_COPY_FILES += \
+     $(LOCAL_PATH)/configs/permissions/default-permissions-com.aiunit.aon.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/default-permissions/default-permissions-com.aiunit.aon.xml \
+     $(LOCAL_PATH)/configs/permissions/privapp-permissions-com.oplus.stdid.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/permissions/privapp-permissions-com.oplus.stdid.xml
+diff --git a/proprietary-files.txt b/proprietary-files.txt
+index 6e5f9f2..36a4ec0 100644
+--- a/proprietary-files.txt
++++ b/proprietary-files.txt
+@@ -23,6 +23,38 @@ odm/lib/rfsa/adsp/libtfadsp_sb5_5_rx.so
+ odm/lib/rfsa/adsp/libtfadsp_sb5_5_tx.so
+ odm/lib/rfsa/adsp/nlc_bgth_v1_5.so
+ 
++# AI Unit
++my_stock/app/AIMemory/AIMemory.apk:product/app/AIMemory/AIMemory.apk;PRESIGNED
++my_stock/app/AIMemory/lib/arm64/libaiunit_sdk_core.so:product/app/AIMemory/lib/arm64/libaiunit_sdk_core.so;MAKE_COPY_RULE_ONLY
++my_stock/app/AIMemory/lib/arm64/libnoise.so:product/app/AIMemory/lib/arm64/libnoise.so;MAKE_COPY_RULE_ONLY
++my_stock/app/AIMemory/lib/arm64/libopluslog.so:product/app/AIMemory/lib/arm64/libopluslog.so;MAKE_COPY_RULE_ONLY
++my_stock/app/AIMemory/lib/arm64/libscan_engine_decode.so:product/app/AIMemory/lib/arm64/libscan_engine_decode.so;MAKE_COPY_RULE_ONLY
++my_stock/app/AIMemory/lib/arm64/libscan_engine_detect.so:product/app/AIMemory/lib/arm64/libscan_engine_detect.so;MAKE_COPY_RULE_ONLY
++my_stock/app/AIMemory/lib/arm64/libtensorflowlite.so:product/app/AIMemory/lib/arm64/libtensorflowlite.so;MAKE_COPY_RULE_ONLY
++my_stock/app/AIMemory/lib/arm64/libwb_tables_549543368749780587_1.so:product/app/AIMemory/lib/arm64/libwb_tables_549543368749780587_1.so;MAKE_COPY_RULE_ONLY
++my_stock/app/AIMemory/lib/arm64/libwbkit-seckit3.so:product/app/AIMemory/lib/arm64/libwbkit-seckit3.so;MAKE_COPY_RULE_ONLY
++my_product/app/AONService/AONService.apk:product/app/AONService/AONService.apk;PRESIGNED
++my_product/app/AONService/lib/arm64/libNoTopK.so:product/app/AONService/lib/arm64/libNoTopK.so;MAKE_COPY_RULE_ONLY
++my_product/app/AONService/lib/arm64/libPOSTPROCESS.so:product/app/AONService/lib/arm64/libPOSTPROCESS.so;MAKE_COPY_RULE_ONLY
++my_product/app/AONService/lib/arm64/libROTATE90PAD.so:product/app/AONService/lib/arm64/libROTATE90PAD.so;MAKE_COPY_RULE_ONLY
++my_product/app/AONService/lib/arm64/libaiboost_jni.so:product/app/AONService/lib/arm64/libaiboost_jni.so;MAKE_COPY_RULE_ONLY
++my_product/app/AONService/lib/arm64/libbitmapUtil.so:product/app/AONService/lib/arm64/libbitmapUtil.so;MAKE_COPY_RULE_ONLY
++my_product/app/AONService/lib/arm64/libfde.so:product/app/AONService/lib/arm64/libfde.so;MAKE_COPY_RULE_ONLY
++my_product/app/AONService/lib/arm64/libmemoryhelper.so:product/app/AONService/lib/arm64/libmemoryhelper.so;MAKE_COPY_RULE_ONLY
++my_stock/app/RomUpdate/RomUpdate.apk:product/app/RomUpdate/RomUpdate.apk;PRESIGNED
++my_product/overlay/aon.frameworkres.overlay.product.apk:product/overlay/aon.frameworkres.overlay.product.apk;EXTRACT_ONLY;FILEGROUP=aon_frameworkres_overlay_apk
++my_stock/priv-app/AIUnit/AIUnit.apk:product/priv-app/AIUnit/AIUnit.apk;PRESIGNED
++my_stock/priv-app/AIUnit/lib/arm64/libaiunit_framework.so:product/priv-app/AIUnit/lib/arm64/libaiunit_framework.so;MAKE_COPY_RULE_ONLY
++my_stock/priv-app/AIUnit/lib/arm64/libaiunit_framework_jni.so:product/priv-app/AIUnit/lib/arm64/libaiunit_framework_jni.so;MAKE_COPY_RULE_ONLY
++my_stock/priv-app/AIUnit/lib/arm64/libaiunit_sdk_core.so:product/priv-app/AIUnit/lib/arm64/libaiunit_sdk_core.so;MAKE_COPY_RULE_ONLY
++my_stock/priv-app/AIUnit/lib/arm64/libc++.so:product/priv-app/AIUnit/lib/arm64/libc++.so;MAKE_COPY_RULE_ONLY
++my_stock/priv-app/AIUnit/lib/arm64/libc++_shared.so:product/priv-app/AIUnit/lib/arm64/libc++_shared.so;MAKE_COPY_RULE_ONLY
++my_stock/priv-app/AIUnit/lib/arm64/libcore_tokenizers.so:product/priv-app/AIUnit/lib/arm64/libcore_tokenizers.so;MAKE_COPY_RULE_ONLY
++my_stock/priv-app/AIUnit/lib/arm64/libdatastore_shared_counter.so:product/priv-app/AIUnit/lib/arm64/libdatastore_shared_counter.so;MAKE_COPY_RULE_ONLY
++my_stock/priv-app/AIUnit/lib/arm64/libdmabufheap.so:product/priv-app/AIUnit/lib/arm64/libdmabufheap.so;MAKE_COPY_RULE_ONLY
++my_stock/priv-app/AIUnit/lib/arm64/libopencv_java4.so:product/priv-app/AIUnit/lib/arm64/libopencv_java4.so;MAKE_COPY_RULE_ONLY
++system_ext/priv-app/StdID/StdID.apk
++
+ # ANT+ firmware
+ odm/firmware/secure_ta/antdtx.b00
+ odm/firmware/secure_ta/antdtx.b01
+-- 
+2.50.1 (Apple Git-155)
+

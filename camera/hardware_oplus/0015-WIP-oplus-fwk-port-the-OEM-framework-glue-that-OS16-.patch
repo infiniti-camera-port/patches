@@ -1,0 +1,326 @@
+From 3fee5b7e5255eff27a6d533ddff9ddbe3e61b025 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 30 Jun 2026 00:53:54 -0600
+Subject: [PATCH 15/24] [WIP] oplus-fwk: port the OEM framework glue that OS16
+ activates
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Restoring the device's real OplusOS 16 version (the OplusBuild change)
+makes the OEM apps take their OS16 code paths, which call framework classes
+the LineageOS port had dropped. Without these the gallery main activity
+dies on launch (com.oplus.util.OplusPlatformLevelUtils -> NoClassDefFoundError
+in BaseActivity) and the camera-SDK APS metadata path can throw on
+motion-photo capture (com.oplus.wrapper.hardware.camera2.* at SDK_VERSION>=34).
+
+Port the handful an empirical OS16 sweep found to actually crash:
+- com.oplus.util.OplusPlatformLevelUtils: the sole uncaught gallery crash;
+  a simplified stub (getPlatformLevel -> LEVEL_HIGH; animation/gaussian from
+  props) matching the 4 methods the gallery's PerformanceLevelUtils calls,
+  without the OEM resource arrays.
+- android.os.OplusKeyEventManager: add getInstance() + no-op register/
+  unregister + LISTEN_* constants to the existing stub (avoids the
+  OplusActivityTaskManager chain).
+- com.oplus.wrapper.hardware.camera2.{CaptureResult,CameraCharacteristics,
+  CameraMetadata,impl.CameraMetadataNative}: thin forwarders to the AOSP
+  @hide camera2 metadata APIs (the getNativeMetadata()/getMetadataPtr()
+  chain ApsUtils.getMetadataPtrForJni needs).
+
+The other OS16-activated missing classes are all caught/degraded by the
+gallery addon layer (no crash) and are intentionally left unported.
+
+(cherry picked from commit 3b5a61a27cd18c156fb756cb6b6ab75bf4f51102)
+
+Ledger: hardware_oplus.md Accepted Group C row 4 (3b5a61a2)
+Stub-matrix: task-9-stub-inventory.md row M10 — consumer: OplusCamera loads the com.oplus.wrapper camera2 metadata wrappers once OS16 version is reported (stacks after 0f54be9d/K08); location: base wrapper/hardware/ contains only devicestate/; Task-10 container-rejected-all keeps it in the boot jar
+Change-Id: I8b635629072e395f1c3f3ead7befb8abf5d2d180
+---
+ .../src/android/os/OplusKeyEventManager.java  | 69 ++++++++++++++++++-
+ .../oplus/util/OplusPlatformLevelUtils.java   | 52 ++++++++++++++
+ .../camera2/CameraCharacteristics.java        | 20 ++++++
+ .../hardware/camera2/CameraMetadata.java      | 13 ++++
+ .../hardware/camera2/CaptureResult.java       | 57 +++++++++++++++
+ .../camera2/impl/CameraMetadataNative.java    | 17 +++++
+ 6 files changed, 227 insertions(+), 1 deletion(-)
+ create mode 100644 oplus-fwk/src/com/oplus/util/OplusPlatformLevelUtils.java
+ create mode 100644 oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CameraCharacteristics.java
+ create mode 100644 oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CameraMetadata.java
+ create mode 100644 oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CaptureResult.java
+ create mode 100644 oplus-fwk/src/com/oplus/wrapper/hardware/camera2/impl/CameraMetadataNative.java
+
+diff --git a/oplus-fwk/src/android/os/OplusKeyEventManager.java b/oplus-fwk/src/android/os/OplusKeyEventManager.java
+index fe013a81..7dab1fcb 100644
+--- a/oplus-fwk/src/android/os/OplusKeyEventManager.java
++++ b/oplus-fwk/src/android/os/OplusKeyEventManager.java
+@@ -1,10 +1,77 @@
+ package android.os;
+ 
++import android.content.Context;
+ import android.view.KeyEvent;
+ 
++/**
++ * LOS shim for the OEM android.os.OplusKeyEventManager. The LOS oplus-fwk previously carried only
++ * the OnKeyEventObserver interface; the OEM apps (e.g. OppoGallery2) also call getInstance() +
++ * register/unregisterKeyEventObserver(). The OEM impl pulls OplusActivityTaskManager + a chain of
++ * OEM classes absent from LOS, so this provides getInstance() returning a singleton whose
++ * key-event registration is a no-op (the key-listening feature degrades silently rather than
++ * crashing).
++ */
+ public class OplusKeyEventManager {
++    public static final String TAG = "OplusKeyEventManager";
++
++    public static final int INTERCEPT_ALWAYS = 0;
++    public static final int INTERCEPT_ONCE = 1;
++
++    public static final int LISTEN_ALL_KEY_EVENT = 0;
++    public static final int LISTEN_POWER_KEY_EVENT = 1;
++    public static final int LISTEN_VOLUME_UP_KEY_EVENT = 2;
++    public static final int LISTEN_VOLUME_DOWN_KEY_EVENT = 4;
++    public static final int LISTEN_MENU_KEY_EVENT = 8;
++    public static final int LISTEN_HOME_KEY_EVENT = 16;
++    public static final int LISTEN_BACK_KEY_EVENT = 32;
++    public static final int LISTEN_F4_KEY_EVENT = 64;
++    public static final int LISTEN_CAMERA_KEY_EVENT = 128;
++    public static final int LISTEN_HEADSETHOOK_KEY_EVENT = 1024;
++    public static final int LISTEN_VOLUME_MUTE_KEY_EVENT = 2048;
++    public static final int LISTEN_APP_SWITCH_KEY_EVENT = 4096;
++    public static final int LISTEN_WAKEUP_KEY_EVENT = 8192;
++    public static final int LISTEN_BRIGHTNESS_UP_KEY_EVENT = 16384;
++    public static final int LISTEN_BRIGHTNESS_DOWN_KEY_EVENT = 32768;
++    public static final int LISTEN_ENDCALL_KEY_EVENT = 65536;
++    public static final int LISTEN_SLEEP_KEY_EVENT = 131072;
++    public static final int LISTEN_ACTION_BUTTON_SINGLE_TAP_KEY_EVENT = 262144;
++    public static final int LISTEN_ACTION_BUTTON_LONG_PRESS_KEY_EVENT = 524288;
++    public static final int LISTEN_LINGXI_GAME_KEY_EVENT = 16777216;
++    public static final int LISTEN_SHOULDER_DOWN_KEY_EVENT = 33554432;
++    public static final int LISTEN_SHOULDER_UP_KEY_EVENT = 67108864;
++    public static final int LISTEN_LINGXI_NO_GAME_KEY_EVENT = 134217728;
++
++    public int mVersion = 1;
++
++    private static volatile OplusKeyEventManager sInstance;
+ 
+     public interface OnKeyEventObserver {
+-        void onKeyEvent(KeyEvent event); 
++        void onKeyEvent(KeyEvent event);
++    }
++
++    private OplusKeyEventManager() {
++    }
++
++    public static OplusKeyEventManager getInstance() {
++        if (sInstance == null) {
++            synchronized (OplusKeyEventManager.class) {
++                if (sInstance == null) {
++                    sInstance = new OplusKeyEventManager();
++                }
++            }
++        }
++        return sInstance;
++    }
++
++    public boolean registerKeyEventObserver(Context context, OnKeyEventObserver observer, int listenFlag) {
++        return false;
++    }
++
++    public boolean unregisterKeyEventObserver(Context context, OnKeyEventObserver observer) {
++        return false;
++    }
++
++    public int getVersion() {
++        return mVersion;
+     }
+ }
+diff --git a/oplus-fwk/src/com/oplus/util/OplusPlatformLevelUtils.java b/oplus-fwk/src/com/oplus/util/OplusPlatformLevelUtils.java
+new file mode 100644
+index 00000000..b569b3f3
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/util/OplusPlatformLevelUtils.java
+@@ -0,0 +1,52 @@
++package com.oplus.util;
++
++import android.content.Context;
++import android.os.SystemProperties;
++
++/**
++ * Minimal LOS shim for the OEM com.oplus.util.OplusPlatformLevelUtils (absent from the LOS
++ * oplus-fwk). The OEM class computes device RAM/CPU/GPU performance tiers from ro.soc.model +
++ * framework resource arrays; those resources are not present on LOS, so this returns safe
++ * flagship defaults (LEVEL_HIGH) for the platform getters and the real props for the
++ * animation/gaussian getters. Matches the OEM public surface the OEM apps call
++ * (getInstance/getPlatformLevel/getPlatformAnimationLevel/getPlatformGaussianLevel).
++ */
++public class OplusPlatformLevelUtils {
++    public static final int LEVEL_UNDEF = -1;
++    public static final int LEVEL_LOW = 1;
++    public static final int LEVEL_MIDDLE = 2;
++    public static final int LEVEL_HIGH = 3;
++    public static final int LEVEL_TYPE_FOR_RAM = 1;
++    public static final int LEVEL_TYPE_FOR_CPU = 2;
++    public static final int LEVEL_TYPE_FOR_GPU = 3;
++
++    public static final boolean IS_LIGHT_OS = SystemProperties.getBoolean("ro.oplus.lightos", false);
++
++    private static volatile OplusPlatformLevelUtils sInstance = null;
++
++    private OplusPlatformLevelUtils(Context context) {
++    }
++
++    public static OplusPlatformLevelUtils getInstance(Context context) {
++        if (sInstance == null) {
++            synchronized (OplusPlatformLevelUtils.class) {
++                if (sInstance == null) {
++                    sInstance = new OplusPlatformLevelUtils(context);
++                }
++            }
++        }
++        return sInstance;
++    }
++
++    public int getPlatformLevel(int type) {
++        return LEVEL_HIGH;
++    }
++
++    public int getPlatformAnimationLevel() {
++        return SystemProperties.getInt("ro.oplus.animationlevel", 0);
++    }
++
++    public int getPlatformGaussianLevel() {
++        return SystemProperties.getInt("ro.oplus.gaussianlevel", 0);
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CameraCharacteristics.java b/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CameraCharacteristics.java
+new file mode 100644
+index 00000000..47f1dbd1
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CameraCharacteristics.java
+@@ -0,0 +1,20 @@
++package com.oplus.wrapper.hardware.camera2;
++
++import com.oplus.wrapper.hardware.camera2.impl.CameraMetadataNative;
++
++public class CameraCharacteristics {
++    private final android.hardware.camera2.CameraCharacteristics mCameraCharacteristics;
++
++    public CameraCharacteristics(android.hardware.camera2.CameraCharacteristics cameraCharacteristics) {
++        this.mCameraCharacteristics = cameraCharacteristics;
++    }
++
++    public CameraMetadataNative getNativeMetadata() {
++        android.hardware.camera2.impl.CameraMetadataNative metadataNative =
++                this.mCameraCharacteristics.getNativeMetadata();
++        if (metadataNative == null) {
++            return null;
++        }
++        return new CameraMetadataNative(metadataNative);
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CameraMetadata.java b/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CameraMetadata.java
+new file mode 100644
+index 00000000..7bfa4251
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CameraMetadata.java
+@@ -0,0 +1,13 @@
++package com.oplus.wrapper.hardware.camera2;
++
++public class CameraMetadata<T> {
++    private final android.hardware.camera2.CameraMetadata<T> mCameraMetadata;
++
++    public CameraMetadata(android.hardware.camera2.CameraMetadata<T> cameraMetadata) {
++        this.mCameraMetadata = cameraMetadata;
++    }
++
++    public long getNativeMetadataPtr() {
++        return this.mCameraMetadata.getNativeMetadataPtr();
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CaptureResult.java b/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CaptureResult.java
+new file mode 100644
+index 00000000..e61802e7
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CaptureResult.java
+@@ -0,0 +1,57 @@
++package com.oplus.wrapper.hardware.camera2;
++
++import com.oplus.wrapper.hardware.camera2.impl.CameraMetadataNative;
++
++public class CaptureResult {
++    private final android.hardware.camera2.CaptureResult mCaptureResult;
++
++    public CaptureResult(android.hardware.camera2.CaptureResult captureResult) {
++        this.mCaptureResult = captureResult;
++    }
++
++    public CameraMetadataNative getNativeMetadata() {
++        android.hardware.camera2.impl.CameraMetadataNative metadataNative =
++                this.mCaptureResult.getNativeMetadata();
++        if (metadataNative == null) {
++            return null;
++        }
++        return new CameraMetadataNative(metadataNative);
++    }
++
++    public CameraMetadataNative getNativeCopy() {
++        android.hardware.camera2.impl.CameraMetadataNative metadataNative =
++                this.mCaptureResult.getNativeCopy();
++        if (metadataNative == null) {
++            return null;
++        }
++        return new CameraMetadataNative(metadataNative);
++    }
++
++    public static final class Key<T> {
++        private final android.hardware.camera2.CaptureResult.Key<T> mKey;
++
++        public Key(android.hardware.camera2.CaptureResult.Key<T> key) {
++            this.mKey = key;
++        }
++
++        public Key(String name, Class<T> type, long vendorId) {
++            this.mKey = new android.hardware.camera2.CaptureResult.Key<>(name, type, vendorId);
++        }
++
++        public Key(String name, Class<T> type) {
++            this.mKey = new android.hardware.camera2.CaptureResult.Key<>(name, type);
++        }
++
++        public Key(String name, String fallbackName, Class<T> type) {
++            this.mKey = new android.hardware.camera2.CaptureResult.Key<>(name, fallbackName, type);
++        }
++
++        public android.hardware.camera2.CaptureResult.Key<T> getKey() {
++            return this.mKey;
++        }
++
++        public long getVendorId() {
++            return this.mKey.getVendorId();
++        }
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/impl/CameraMetadataNative.java b/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/impl/CameraMetadataNative.java
+new file mode 100644
+index 00000000..e2611bb1
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/impl/CameraMetadataNative.java
+@@ -0,0 +1,17 @@
++package com.oplus.wrapper.hardware.camera2.impl;
++
++public class CameraMetadataNative {
++    private final android.hardware.camera2.impl.CameraMetadataNative mCameraMetadataNative;
++
++    public CameraMetadataNative(android.hardware.camera2.impl.CameraMetadataNative cameraMetadataNative) {
++        this.mCameraMetadataNative = cameraMetadataNative;
++    }
++
++    public long getMetadataPtr() {
++        return this.mCameraMetadataNative.getMetadataPtr();
++    }
++
++    public static int getTag(String key, long vendorId) {
++        return android.hardware.camera2.impl.CameraMetadataNative.getTag(key, vendorId);
++    }
++}
+-- 
+2.50.1 (Apple Git-155)
+

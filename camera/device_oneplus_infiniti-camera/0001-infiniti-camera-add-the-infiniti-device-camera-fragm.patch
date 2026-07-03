@@ -1,0 +1,132 @@
+From 4bef2a253d97a659f25282a7dffdd2a39a2fb14c Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Fri, 3 Jul 2026 15:34:55 +0000
+Subject: [PATCH] infiniti-camera: add the infiniti device camera fragment
+
+Second half of the two-tier camera topology split (task-8 design,
+sections 4-5): infiniti-camera.mk inherits the SoC-common camera
+fragment (device/oneplus/sm8850-common-camera) plus the
+vendor/oplus/camera payload (vendor-tier split deferred per task-8
+section 3), and carries the infiniti-bucket device-side camera config:
+the family-A odm oemlayer HAL selection (ro.hardware.camera) and the
+infiniti vendor-partition '=true' form of ro.camera.disableHeicUltraHDR
+(task-8 section 4 rows), both moved out of device/oneplus/sm8850-common
+vendor.prop. README replaced with the real repo contract.
+
+Change-Id: I3c363b9709d490c0d23099ee672c492e6d3e089c
+---
+ README.md          | 61 +++++++++++-----------------------------------
+ infiniti-camera.mk | 31 +++++++++++++++++++++++
+ 2 files changed, 45 insertions(+), 47 deletions(-)
+ create mode 100644 infiniti-camera.mk
+
+diff --git a/README.md b/README.md
+index ea6ab54..984aab0 100644
+--- a/README.md
++++ b/README.md
+@@ -1,51 +1,18 @@
+-# device_oneplus_infiniti-camera
++# device/oneplus/infiniti-camera
+ 
+-Build-tree path: `device/oneplus/infiniti-camera`
+-Branch: `staging/16.0_crdroid` (integration branch for the crDroid 16.0 camera split)
++Per-device camera fragment for infiniti (OnePlus 15, sm8850/kaanapali)
++— the device tier of the two-tier camera topology split (task-8 design).
+ 
+-## Purpose
++Inheritance chain:
+ 
+-Per-device camera tree for the OnePlus 15 "infiniti" (CPH2745, board OP611FL1, prj 24863).
+-Carries the camera content that dump evidence proves is device-specific:
++    device/oneplus/infiniti/device.mk
++      -> device/oneplus/infiniti-camera/infiniti-camera.mk
++           -> device/oneplus/sm8850-common-camera/sm8850-common-camera.mk
++           -> vendor/oplus/camera/opluscamera.mk   (payload)
+ 
+-- Family-A vendor camera blob listing: the 180-file `vendor/lib64/camera` drop + vendor hw HAL
+-  libs (`camera.qcom.so`, `camera.qcom.sm8850.so`, `camera.qcom.core.so`,
+-  `com.qti.chi.{override,offline}.so`) + odm oemlayer (blob bytes stay in `vendor/oplus/camera`).
+-- `CameraHWConfiguration.config` (5 logical cameras; infiniti{main,front,ultrawide,tele}).
+-- Per-sensor odm tuning (`config/<sensor>`, cfr_bin, dng, 3A libaec/af/pdCustomParam, awb,
+-  `com.oplus.node.*`).
+-- Per-device configs: `fwk_config.json`, `media_profiles.xml`, `camera_engmode.xml`,
+-  `oplus_camera_*`, eis vcfg, facerestore, vainr.
+-- Infiniti-only presence files: `com.qti.sensormodule.infiniti*.bin`,
+-  `OplusOfflineReprocess.json`, `manifest_mosey.xml`, `p3_to_bt2020_3dlut.bin`,
+-  `gamma_masterMode_quick_sdr_conf.json`.
+-- Camera/gallery APK package selection (OplusCamera, OppoGallery2, AIUnit, VideoGallery —
+-  infiniti builds).
+-
+-The sm8850-common camera surface (registration vintf/rc, camx impl libs, shared 526-file
+-algorithm asset base, system_ext configs) lives in `device_oneplus_sm8850-common-camera`,
+-which this tree inherits.
+-
+-## Evidence basis
+-
+-Dump analysis (Task 5 of the crDroid sm8850 camera-split plan, 2026-07-03) proved **two vendor
+-camera blob provenance families** on sm8850/canoe:
+-
+-- **Family A = infiniti (+op15)**: 180-file drop; the op15 dump (CPH2747, same board OP611FL1 /
+-  prj 24863, older 16.0.5 firmware) differs in only 5/180 files — board-stable.
+-- **Family B = macan (CPH2769, 15R) + macanc (PLR110, Ace 6T) + fairlady (PLZ110, 15T)**:
+-  201-file drop, 201/201 byte-identical within the trio.
+-- Across families only 2/180 files match — families are never mixed; this repo carries the
+-  family-A device, and only the ×4-byte-identical surface was commonized.
+-
+-Source dump for this device: `infiniti_CPH2745_OOS16.0.8_11.A.42` — OxygenOS 16.0.8.300(EX01),
+-OTA 11.A.42, fingerprint `OnePlus/CPH2745IN/OP611FL1:16/BP2A.250605.015/...`. Cross-check dump:
+-`op15_16.0.5.702` (CPH2747, OxygenOS 16.0.5.703(EX01)). Family-B dumps (macan OTA 11.A.47,
+-macanc ColorOS 16.0.8.301 OTA 11.A.62, fairlady ColorOS 16.0.8.300 OTA 11.A.31) are deferred —
+-not port targets.
+-
+-## Content
+-
+-This repo is scaffolding only for now. The `infiniti-camera.mk` fragment, blob listings,
+-sepolicy, and overlays land via Task 12 of the plan, which also adds this project to the build
+-manifest. Do not add this repo to a manifest before that content exists.
++Scope: the infiniti-specific camera surface (task-8 section 4
++"infiniti"-bucket rows) — family-A payload selection (odm oemlayer HAL),
++the infiniti vendor-prop forms, and, as the vendor-tier split lands, the
++family-A blob listing (`proprietary-files-camera-infiniti.txt`),
++device-scoped camera sepolicy and camera overlays. Per-sensor tuning
++bytes stay in the vendor payload repo.
+diff --git a/infiniti-camera.mk b/infiniti-camera.mk
+new file mode 100644
+index 0000000..f5731ae
+--- /dev/null
++++ b/infiniti-camera.mk
+@@ -0,0 +1,31 @@
++#
++# Copyright (C) 2026 The LineageOS Project
++#
++# SPDX-License-Identifier: Apache-2.0
++#
++
++# infiniti (OnePlus 15) device camera product fragment (task-8 topology
++# sections 4-5). Inherited from device/oneplus/infiniti/device.mk.
++
++# SoC-common camera surface
++$(call inherit-product, device/oneplus/sm8850-common-camera/sm8850-common-camera.mk)
++
++# OEM camera payload. The vendor-tier common/per-device split is deferred
++# (task-8 section 3): vendor/oplus/camera still hosts both the common
++# registration/asset surface and the infiniti family-A payload
++# (180-file vendor/lib64/camera drop, hw HAL libs, odm oemlayer,
++# per-sensor odm tuning, per-device framework/app camera configs,
++# infiniti-only presence files, camera/gallery APKs — the task-8
++# section 4 "infiniti"-bucket rows).
++$(call inherit-product-if-exists, vendor/oplus/camera/opluscamera.mk)
++
++# infiniti camera properties (moved from device/oneplus/sm8850-common
++# vendor.prop):
++# - ro.hardware.camera selects the family-A odm oemlayer HAL
++#   (task-8 section 4 family-A payload row: "odm oemlayer (v2 + adapter)")
++# - ro.camera.disableHeicUltraHDR uses the infiniti vendor-partition
++#   '=true' form (task-8 section 4 disableHeicUltraHDR row: family-split
++#   prop form, normalize per family)
++PRODUCT_VENDOR_PROPERTIES += \
++    ro.camera.disableHeicUltraHDR=true \
++    ro.hardware.camera=oemlayer.v2
+-- 
+2.50.1 (Apple Git-155)
+

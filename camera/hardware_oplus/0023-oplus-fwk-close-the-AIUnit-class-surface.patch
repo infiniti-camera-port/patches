@@ -1,0 +1,236 @@
+From 0ebf2bca5ecf9f846b80a67873609bf79bbaf96a Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Thu, 2 Jul 2026 23:58:28 +0000
+Subject: [PATCH 23/24] oplus-fwk: close the AIUnit class surface
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Close the framework class surface the AIUnit system apps reference:
+
+  * Add OplusHansFreezeManager, OplusLockPatternUtils and the
+    CryptoengNative sysapi shim.
+  * Fold AIUnit isMultiSystemUserId into the existing OplusMultiUserManager
+    (dedup the duplicate class).
+  * Close the RomUpdate OTA-check and AIUnit StatsEvent call sites
+    (OplusPackageManager / OplusSystemUpdateInfo / StatsEvent).
+
+Change-Id: I3c135898e091ddd8d33593edff27383195a966e6
+(cherry picked from commit e334fb78c70ac267351f5525f3be7bbacc71a2e5)
+
+Ledger: hardware_oplus.md Accepted Group C row 12 (e334fb78)
+Stub-matrix: task-9-stub-inventory.md row K07 — consumers: AIUnit+VideoGallery (OplusHansFreezeManager/OplusLockPatternUtils/OplusSystemUpdateInfo, dex-scan); location: oplus-fwk boot jar
+Change-Id: Ic0f9501ee02cf69d8f6ab4a203f9d6c179cfaab2
+---
+ .../content/pm/OplusPackageManager.java       |  7 +++
+ .../MultiUser/OplusMultiUserManager.java      |  4 ++
+ .../com/oplus/app/OplusHansFreezeManager.java | 43 +++++++++++++++++++
+ .../com/oplus/os/OplusLockPatternUtils.java   | 30 +++++++++++++
+ .../com/oplus/ota/OplusSystemUpdateInfo.java  | 24 +++++++++++
+ .../com/oplus/wrapper/util/StatsEvent.java    |  8 ++++
+ .../sysapi/cryptoeng/CryptoengNative.java     | 27 ++++++++++++
+ 7 files changed, 143 insertions(+)
+ create mode 100644 oplus-fwk/src/com/oplus/app/OplusHansFreezeManager.java
+ create mode 100644 oplus-fwk/src/com/oplus/os/OplusLockPatternUtils.java
+ create mode 100644 oplus-fwk/src/com/oplus/ota/OplusSystemUpdateInfo.java
+ create mode 100644 oplus-fwk/src/com/oplusx/sysapi/cryptoeng/CryptoengNative.java
+
+diff --git a/oplus-fwk/src/android/content/pm/OplusPackageManager.java b/oplus-fwk/src/android/content/pm/OplusPackageManager.java
+index d272f2ae..36610532 100644
+--- a/oplus-fwk/src/android/content/pm/OplusPackageManager.java
++++ b/oplus-fwk/src/android/content/pm/OplusPackageManager.java
+@@ -750,4 +750,11 @@ public class OplusPackageManager {
+             throw e.rethrowFromSystemServer();
+         }
+     }
++
++    public com.oplus.ota.OplusSystemUpdateInfo getSystemUpdateInfo() {
++        // No OOS OTA service on LineageOS. Null is fail-closed by OEM design:
++        // the caller immediately dereferences the record, and that NPE lands in
++        // its own catch(Exception), aborting the OTA-check branch cleanly.
++        return null;
++    }
+ }
+diff --git a/oplus-fwk/src/com/oplus/MultiUser/OplusMultiUserManager.java b/oplus-fwk/src/com/oplus/MultiUser/OplusMultiUserManager.java
+index cf8bf73b..431c0854 100644
+--- a/oplus-fwk/src/com/oplus/MultiUser/OplusMultiUserManager.java
++++ b/oplus-fwk/src/com/oplus/MultiUser/OplusMultiUserManager.java
+@@ -18,4 +18,8 @@ public class OplusMultiUserManager {
+     public boolean isMultiSystemUserHandle(UserHandle userHandle) {
+         return false;
+     }
++
++    public boolean isMultiSystemUserId(int userId) {
++        return false;
++    }
+ }
+diff --git a/oplus-fwk/src/com/oplus/app/OplusHansFreezeManager.java b/oplus-fwk/src/com/oplus/app/OplusHansFreezeManager.java
+new file mode 100644
+index 00000000..4344f7b5
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/app/OplusHansFreezeManager.java
+@@ -0,0 +1,43 @@
++/*
++ * Copyright (C) 2026 The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.oplus.app;
++
++import android.content.Context;
++
++/*
++ * Stub — Hans is the OOS background freeze/hibernation service. AIUnit's sysboard
++ * FreezeSubscriber calls keepBackgroundRunning() to shield long-running detect
++ * sessions from being frozen. LineageOS has no Hans, so background execution is
++ * never frozen in the first place: report success on the protect connection so
++ * callers waiting on the callback proceed instead of timing out.
++ *
++ * Descriptors mirrored from the OOS 16.0.8 consumers (AIUnit 16.1.25 smali):
++ *   getInstance()Lcom/oplus/app/OplusHansFreezeManager;
++ *   keepBackgroundRunning(Landroid/content/Context;Ljava/lang/String;Z
++ *       Lcom/oplus/app/IOplusProtectConnection;)V
++ */
++public class OplusHansFreezeManager {
++    private static final OplusHansFreezeManager INSTANCE = new OplusHansFreezeManager();
++
++    private OplusHansFreezeManager() {
++    }
++
++    public static OplusHansFreezeManager getInstance() {
++        return INSTANCE;
++    }
++
++    public void keepBackgroundRunning(Context context, String packageName, boolean protect,
++            IOplusProtectConnection connection) {
++        // No Hans on LineageOS: the caller is already permanently "protected".
++        if (connection != null) {
++            try {
++                connection.onSuccess();
++            } catch (Exception e) {
++                // Callback into the caller's own process; nothing to recover.
++            }
++        }
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/os/OplusLockPatternUtils.java b/oplus-fwk/src/com/oplus/os/OplusLockPatternUtils.java
+new file mode 100644
+index 00000000..067e878f
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/os/OplusLockPatternUtils.java
+@@ -0,0 +1,30 @@
++/*
++ * Copyright (C) 2026 The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.oplus.os;
++
++import com.oplus.hardware.cryptoeng.CryptoEngManager;
++
++/*
++ * OOS routes OplusLockPatternUtils.cryptoEngCommand() into the cryptoeng TEE HAL
++ * (vendor.oplus.hardware.cryptoeng). The allawn crypto SDK compiled into AIUnit
++ * (com.allawn.cryptography.teesdk.SystemChannel) uses it as the legacy entry point
++ * into cryptoeng for device attestation / key commands — the sibling path is
++ * com.oplusx.sysapi.cryptoeng.CryptoengNative. Delegate to our CryptoEngManager
++ * client; it returns null when the vendor service is unreachable, which the SDK
++ * already treats as "cryptoeng unavailable" (same as its NoClassDefFound fallback).
++ *
++ * Descriptors mirrored from the OOS 16.0.8 consumers (AIUnit 16.1.25 smali):
++ *   <init>()V
++ *   cryptoEngCommand([B)[B
++ */
++public class OplusLockPatternUtils {
++    public OplusLockPatternUtils() {
++    }
++
++    public byte[] cryptoEngCommand(byte[] command) {
++        return CryptoEngManager.getInstance().cryptoEngCommand(command);
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/ota/OplusSystemUpdateInfo.java b/oplus-fwk/src/com/oplus/ota/OplusSystemUpdateInfo.java
+new file mode 100644
+index 00000000..ca5d06d3
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/ota/OplusSystemUpdateInfo.java
+@@ -0,0 +1,24 @@
++/*
++ * Copyright (C) 2026 The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.oplus.ota;
++
++/*
++ * Stub -- the OOS OTA update record. LineageOS never reports an OOS system
++ * update, so consumers see "no update" values.
++ *
++ * Descriptors mirrored from the OOS 16.0.8 consumers (RomUpdate 16.0.11 smali):
++ *   getUpdateType()I
++ *   isUpdateSucc()Z
++ */
++public class OplusSystemUpdateInfo {
++    public int getUpdateType() {
++        return 0;
++    }
++
++    public boolean isUpdateSucc() {
++        return false;
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/wrapper/util/StatsEvent.java b/oplus-fwk/src/com/oplus/wrapper/util/StatsEvent.java
+index 4841edb8..af750006 100644
+--- a/oplus-fwk/src/com/oplus/wrapper/util/StatsEvent.java
++++ b/oplus-fwk/src/com/oplus/wrapper/util/StatsEvent.java
+@@ -28,6 +28,14 @@ public class StatsEvent {
+             return this;
+         }
+ 
++        public Builder writeFloat(float value) {
++            return this;
++        }
++
++        public Builder writeString(String value) {
++            return this;
++        }
++
+         public Builder usePooledBuffer() {
+             return this;
+         }
+diff --git a/oplus-fwk/src/com/oplusx/sysapi/cryptoeng/CryptoengNative.java b/oplus-fwk/src/com/oplusx/sysapi/cryptoeng/CryptoengNative.java
+new file mode 100644
+index 00000000..546922bc
+--- /dev/null
++++ b/oplus-fwk/src/com/oplusx/sysapi/cryptoeng/CryptoengNative.java
+@@ -0,0 +1,27 @@
++/*
++ * Copyright (C) 2026 The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.oplusx.sysapi.cryptoeng;
++
++import com.oplus.hardware.cryptoeng.CryptoEngManager;
++
++/*
++ * Stub of the oplusx sysapi cryptoeng shim — the modern entry point of the allawn
++ * crypto SDK's SystemChannel (com.allawn.cryptography.teesdk in AIUnit 16.1.25);
++ * the legacy sibling is com.oplus.os.OplusLockPatternUtils#cryptoEngCommand. Both
++ * funnel into the same vendor.oplus.hardware.cryptoeng invoke command, so delegate
++ * to our CryptoEngManager client.
++ *
++ * Descriptors mirrored from the OOS 16.0.8 consumers (AIUnit 16.1.25 smali):
++ *   processCmdV2([B)[B (static)
++ */
++public class CryptoengNative {
++    private CryptoengNative() {
++    }
++
++    public static byte[] processCmdV2(byte[] command) {
++        return CryptoEngManager.getInstance().cryptoEngCommand(command);
++    }
++}
+-- 
+2.50.1 (Apple Git-155)
+

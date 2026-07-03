@@ -1,0 +1,66 @@
+From b836c3bd1be563d4b4da0dfc041f3ef34d02b42e Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Thu, 2 Jul 2026 17:58:58 -0600
+Subject: [PATCH 15/16] infiniti: document the dropped private-space priv-apps
+
+The OOS private-space cluster ships three system_ext priv-apps
+(com.oplus.pantanal.ums, com.oplus.phonemanager, com.oplus.exsystemservice)
+that this tree does not ship. They are not load-bearing for the camera port,
+and shipping them without privapp-permissions allowlist entries bootloops
+system_ready under enforce; dropping them is the safer, de-bloating choice.
+Record the decision, the boot-risk rationale, and a TODO for a future
+stub-based accommodation so the drop is not mistaken for an oversight.
+
+(cherry picked from commit 2e0030f35f906d6c049c3499a3d0e8fd594f35e9)
+---
+ README.private-space-apps.md | 38 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 38 insertions(+)
+ create mode 100644 README.private-space-apps.md
+
+diff --git a/README.private-space-apps.md b/README.private-space-apps.md
+new file mode 100644
+index 0000000..e1b1579
+--- /dev/null
++++ b/README.private-space-apps.md
+@@ -0,0 +1,38 @@
++# Private-space priv-apps: intentionally dropped
++
++The OOS "private-space" cluster ships three `system_ext` privileged apps that
++this device tree intentionally does **not** ship. They are not part of the
++camera/gallery port and were removed from the `vendor_oplus_camera` extract:
++
++| package | stock app | why it exists on OOS |
++|---|---|---|
++| `com.oplus.pantanal.ums` | UMS | Pantanal "User Model Service" — smart-service/card hub host |
++| `com.oplus.phonemanager` | PhoneManager | OEM phone-manager (clear/scan providers) |
++| `com.oplus.exsystemservice` | OplusExSystemService | OEM extended-system service host |
++
++## Why dropped (not allowlisted)
++
++With `ro.control_privapp_permissions=enforce` (LineageOS userdebug), every
++`system_ext` priv-app that requests a platform privileged permission **without**
++a `privapp-permissions` allowlist entry turns into a
++`PackageManagerService.systemReady` `IllegalStateException` — a hard bootloop.
++
++These three apps request such permissions, but the privapp enforce gate only
++fires for packages that are actually **present**. Because the private-space
++cluster is not load-bearing for the camera port (the kept stack references them
++only via `<queries>` package-visibility or in-apk `"stub"` replicas — no live
++bind), dropping them removes the boot risk without shipping allowlist entries
++for apps we no longer install. Verified on-device: camera + gallery are fully
++functional with all three absent.
++
++Full origin/consumer provenance for the six private-space apps is recorded in
++the port's engineering notes (`privspace-apps-provenance.md`).
++
++## TODO (deferred — nothing built here)
++
++A future "better private-space" base could run the OplusCamera stack **with**
++these apps replaced by lightweight provider/service stubs plus targeted
++no-ops, so OplusCamera's pantanal/UMS integration hooks resolve cleanly instead
++of throwing caught exceptions. This tree simply drops them; the stub-surface
++blueprint lives in the provenance notes above and is a post-rebase candidate,
++not part of this series.
+-- 
+2.50.1 (Apple Git-155)
+

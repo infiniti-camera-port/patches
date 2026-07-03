@@ -1,0 +1,36 @@
+From ff3181d8aef5cfc7fc83da55cc3745e37c3855cd Mon Sep 17 00:00:00 2001
+From: Hecheng Yu <kde-yyds@qq.com>
+Date: Mon, 8 Jun 2026 11:39:27 +0800
+Subject: [PATCH 08/24] Add stub startBackgroundRunning
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+(cherry picked from commit 974d9f0b8ab75d793b703e39b36ebe2de74a5e5a)
+Change-Id: I40243293bcdb6ca30364e444f869523a7fa2e924
+
+Conflict resolution: crDroid base bd0e44d0 already provides startBackgroundRunning(Context,int,BgRunningCallback) + stopBackgroundRunning + BgRunningCallback; kept base and added only the residual startBackgroundRunning(Context,int,OsenseEventCallback) overload per the ledger PARTIAL note.
+
+Ledger: hardware_oplus.md Accepted Group B row 1 (974d9f0b)
+Stub-matrix: task-9-stub-inventory.md row K12 — consumer: OplusCamera Osense perf-boost call site links startBackgroundRunning(Context,int,OsenseEventCallback); location: member patch on base OsenseResEventClient.java
+Change-Id: I5da08e0c1f867f5e931d8c50e9d76fdd7b84d467
+---
+ oplus-fwk/src/com/oplus/osense/OsenseResEventClient.java | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/oplus-fwk/src/com/oplus/osense/OsenseResEventClient.java b/oplus-fwk/src/com/oplus/osense/OsenseResEventClient.java
+index e87b5e3b..55a6b911 100644
+--- a/oplus-fwk/src/com/oplus/osense/OsenseResEventClient.java
++++ b/oplus-fwk/src/com/oplus/osense/OsenseResEventClient.java
+@@ -39,4 +39,8 @@ public class OsenseResEventClient {
+     public boolean stopBackgroundRunning(Context context, int type) {
+         return false;
+     }
++
++    public void startBackgroundRunning(Context context, int bgMode, OsenseEventCallback callback) {
++        return;
++    }
+ }
+-- 
+2.50.1 (Apple Git-155)
+

@@ -1,0 +1,41 @@
+From 0c42a2a9d7ed4862c9c0303d63d7e6a3d69d68cf Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Thu, 2 Jul 2026 16:50:49 -0600
+Subject: [PATCH 14/16] infiniti: report the stock OTA version
+
+Our build leaves ro.build.version.ota unset, so AIUnit resolves its
+ai::key::ota_version cloud-request field to the literal sentinel
+"ota_version" and the OPPO AIGC cloud soft-denies every generation
+request to an empty payload (errCode=0, null/0 body) - AI Recompose
+and AI Eraser silently produce nothing while the rest of the pipeline
+(upload, dispatch, polling) works.
+
+Set the OTA version of the stock OOS 16.0.8 build this tree's blobs
+are extracted from, matching what the OEM ROM reports. Verified live
+on-device under enforcing SELinux: adding only this property makes the
+cloud return real AIGC content.
+
+Change-Id: I1c58201520ff05ff04d322ab8fd2a7f3320991af
+(cherry picked from commit a7c3145af552ce3af3c42cde74c74d07df7fcf5e)
+---
+ device.mk | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/device.mk b/device.mk
+index 96e7811..b36ac08 100644
+--- a/device.mk
++++ b/device.mk
+@@ -55,6 +55,10 @@ PRODUCT_PACKAGES += \
+ PRODUCT_PACKAGES += \
+     vendor.lineage.powershare-service.oplus
+ 
++# Properties
++PRODUCT_PRODUCT_PROPERTIES += \
++    ro.build.version.ota=CPH2745_11.A.42_0420_202606022356
++
+ # Recovery
+ $(call soong_config_set_bool,recovery,target_recovery_uses_qti_drm,true)
+ 
+-- 
+2.50.1 (Apple Git-155)
+

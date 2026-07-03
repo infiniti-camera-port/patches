@@ -1,0 +1,48 @@
+From db45892e6df73147dbdc281b62483528227d8124 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 16 Jun 2026 22:00:27 -0600
+Subject: [PATCH 09/24] oplus-fwk: add Osense ABI stubs (BgRunning +
+ unregister)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Camera app calls startBackgroundRunning / stopBackgroundRunning /
+unregisterEventCallback at startup; without these the oplus-fwk boot jar
+throws NoSuchMethodError and camera init fails. Add no-op stubs (same
+pattern as the existing OsenseResEventClient skeleton) so the camera
+stack boots cleanly on LineageOS.
+
+Keeps both startBackgroundRunning overloads (BgRunningCallback and
+OsenseEventCallback) to satisfy either OEM descriptor.
+
+(cherry picked from commit a8f4628d3e51f3fc3bde2e9cff764db3f882bf74)
+Change-Id: I6996c68691dd7e649e09987ff4717a4ec605bbc3
+
+Conflict resolution: BgRunning start/stop already base-provided by bd0e44d0 (auto-merge duplicated them; deduped); kept only the residual unregisterEventCallback(OsenseEventCallback) member per the ledger PARTIAL note.
+
+Ledger: hardware_oplus.md Accepted Group B row 2 (a8f4628d)
+Stub-matrix: task-9-stub-inventory.md row K12 — consumer: OEM camera/gallery unregister path; location: member patch on base OsenseResEventClient.java
+Change-Id: Ib77c7876a04e3ced8625e83557620302a4113127
+---
+ oplus-fwk/src/com/oplus/osense/OsenseResEventClient.java | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/oplus-fwk/src/com/oplus/osense/OsenseResEventClient.java b/oplus-fwk/src/com/oplus/osense/OsenseResEventClient.java
+index 55a6b911..e59c008f 100644
+--- a/oplus-fwk/src/com/oplus/osense/OsenseResEventClient.java
++++ b/oplus-fwk/src/com/oplus/osense/OsenseResEventClient.java
+@@ -25,6 +25,10 @@ public class OsenseResEventClient {
+         return 0;
+     }
+ 
++    public int unregisterEventCallback(OsenseEventCallback callback) {
++        return 0;
++    }
++
+     public void requestSceneAction(Bundle bundle) {
+         return;
+     }
+-- 
+2.50.1 (Apple Git-155)
+

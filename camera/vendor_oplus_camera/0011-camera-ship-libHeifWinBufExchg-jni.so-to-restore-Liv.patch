@@ -1,0 +1,45 @@
+From bc306b4b898ee1475e08178eca25954c4eee1615 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Sun, 28 Jun 2026 02:36:02 -0600
+Subject: [PATCH 11/19] camera: ship libHeifWinBufExchg-jni.so to restore
+ Live/Motion Photo
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Live/Motion Photo captured a plain JPEG with no embedded motion clip. The
+OplusCamera live-photo path drives OplusCameraManager.nativtSendToProcessHeif,
+which dlopens libHeifWinBufExchg-jni — the HEIF HW-buffer-exchange carrier that
+muxes the FRC-interpolated clip into the still. That blob was missing from the
+camera proprietary list, so OplusCameraManager.checkLoadLibrary() silently
+swallowed the load failure and the pipeline reported success while embedding
+nothing.
+
+Add system_ext/lib64/libHeifWinBufExchg-jni.so. Its NEEDED deps
+(libHeifEncoderWrapper, libNativeWinBuffExchange, std libs) already ship, so no
+DISABLE_CHECKELF is required. Device-verified via a /system_ext overlay: a live
+photo now writes a 17.4 MB JPEG carrying the embedded MP4 (ftyp/moov/mdat) plus
+the GCamera:MotionPhoto XMP + GContainer items, recognized as a motion photo.
+
+The LivePhotoPresenter ImageReader.nativeGetConsumer NoSuchMethodException is a
+benign fallback symptom (it fires on stock OOS too) — not the cause, and needs
+no frameworks_base change.
+---
+ proprietary-files.txt | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/proprietary-files.txt b/proprietary-files.txt
+index d379afa..75e3fae 100644
+--- a/proprietary-files.txt
++++ b/proprietary-files.txt
+@@ -57,6 +57,7 @@ my_product/product_overlay/framework/com.oplus.camera.unit.sdk.adapter.jar:syste
+ my_product/product_overlay/framework/com.oplus.camera.unit.sdk.jar:system_ext/framework/com.oplus.camera.unit.sdk.jar
+ system_ext/lib64/libpenguin.so:vendor/lib64/libpenguin.so
+ system_ext/lib64/libHeifEncoderWrapper.so
++system_ext/lib64/libHeifWinBufExchg-jni.so
+ system_ext/lib64/libNativeWinBuffExchange.so
+ system_ext/lib64/liboplusheifwriter.so
+ system_ext/priv-app/OplusAppPlatform/OplusAppPlatform.apk
+-- 
+2.50.1 (Apple Git-155)
+

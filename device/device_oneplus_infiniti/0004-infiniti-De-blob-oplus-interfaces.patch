@@ -1,0 +1,59 @@
+From fe018ec160736b701883e71aa8f35f823566b43b Mon Sep 17 00:00:00 2001
+From: Bruno Martins <bgcngm@gmail.com>
+Date: Sat, 30 May 2026 13:39:59 +0100
+Subject: [PATCH 04/16] infiniti: De-blob oplus interfaces
+
+Change-Id: I1eb5b8fd0505de36c43a16051b5d086063c9e9c9
+(cherry picked from commit 8146137c55de8c1f08de9602a6ff26d2bd7124bc)
+---
+ extract-files.py      | 4 ----
+ proprietary-files.txt | 7 -------
+ 2 files changed, 11 deletions(-)
+
+diff --git a/extract-files.py b/extract-files.py
+index d8c5f6c..441d9b6 100755
+--- a/extract-files.py
++++ b/extract-files.py
+@@ -33,10 +33,6 @@ lib_fixups: lib_fixups_user_type = {
+     **lib_fixups,
+     (
+         'libhcsutils',
+-        'vendor.oplus.hardware.camera.aon-V1-ndk',
+-        'vendor.oplus.hardware.camera_rfi-V3-ndk',
+-        'vendor.oplus.hardware.cammidasservice-V1-ndk',
+-        'vendor.oplus.hardware.sendextcamcmd-V2-ndk',
+     ): lib_fixup_vendor_suffix,
+ }
+ 
+diff --git a/proprietary-files.txt b/proprietary-files.txt
+index ecc52fa..b4ddd54 100644
+--- a/proprietary-files.txt
++++ b/proprietary-files.txt
+@@ -1098,13 +1098,9 @@ odm/lib64/libwechatsr_ubwc.so
+ odm/lib64/libwrapper_te.so
+ odm/lib64/libyuvwrapper.so
+ odm/lib64/libzlib.so
+-odm/lib64/vendor.oplus.hardware.camera.aon-V1-ndk.so
+ odm/lib64/vendor.oplus.hardware.camera.aon-service-impl.so
+ odm/lib64/vendor.oplus.hardware.camera_rfi-V1-service-impl.so
+-odm/lib64/vendor.oplus.hardware.camera_rfi-V3-ndk.so
+-odm/lib64/vendor.oplus.hardware.cammidasservice-V1-ndk.so
+ odm/lib64/vendor.oplus.hardware.sendextcamcmd-V1-service-impl.so
+-odm/lib64/vendor.oplus.hardware.sendextcamcmd-V2-ndk.so
+ vendor/bin/hw/vendor.qti.camera.provider-service_64;DISABLE_DEPS
+ vendor/etc/init/vendor.qti.camera.provider-service_64.rc
+ vendor/etc/vintf/manifest/vendor.qti.camera.aon-impl.xml
+@@ -1438,10 +1434,7 @@ vendor/lib64/libswregistrationalgo.so
+ vendor/lib64/libtfestriping.so
+ vendor/lib64/libubifocus.so
+ vendor/lib64/libvideoml.so
+-vendor/lib64/vendor.oplus.hardware.camera.aon-V1-ndk.so;MODULE_SUFFIX=_vendor
+-vendor/lib64/vendor.oplus.hardware.cammidasservice-V1-ndk.so;MODULE_SUFFIX=_vendor
+ vendor/lib64/vendor.oplus.hardware.cammidasservice@1.0.so
+-vendor/lib64/vendor.oplus.hardware.sendextcamcmd-V2-ndk.so;MODULE_SUFFIX=_vendor
+ vendor/lib64/vendor.qti.hardware.camera.aon-service-impl.so
+ vendor/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so;DISABLE_DEPS
+ 
+-- 
+2.50.1 (Apple Git-155)
+

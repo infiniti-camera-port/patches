@@ -1,0 +1,325 @@
+From 51e46f93b019e61e7472a2ca3c76e37721286a10 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Thu, 2 Jul 2026 23:58:27 +0000
+Subject: [PATCH 19/24] oplus-fwk: close the OEM app-boot stub surface
+ (platform tiers + shortcuts)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Fill in two OEM stubs the system apps hard-call during boot:
+
+  * OplusPlatformLevelUtils now reports OEM-faithful capability tiers
+    (animation/gaussian HIGH, CPU/GPU UNDEFINED) instead of a flat
+    default, so effect-gating apps take the correct path.
+  * ShortcutLoader.queryShortcuts posts the OEM zero-match Result
+    instead of leaving the callback unfired, so the launcher shortcut
+    query completes rather than hanging.
+
+Change-Id: I7238c1cbe88a8c1eef8ca91c1a1dabec7e3cf8f6
+(cherry picked from commit 1ff11c18c4f98364522d61f0ef1485ef3ad675e2)
+
+Ledger: hardware_oplus.md Accepted Group C row 8 (1ff11c18)
+Stub-matrix: task-9-stub-inventory.md row K10 — consumer: OppoGallery2 boot call sites (OplusPlatformLevelUtils tiers + ShortcutLoader.queryShortcuts, dex-scan + closure-javadoc); location: members on M03/M16 classes in the boot jar
+Change-Id: Id7ee35283c09ee6b6bb358bbc7ed6568d757f6fe
+---
+ .../com/oplus/shortcuts/ShortcutLoader.java   | 124 +++++++++++++++---
+ .../oplus/util/OplusPlatformLevelUtils.java   |  96 ++++++++++++--
+ 2 files changed, 193 insertions(+), 27 deletions(-)
+
+diff --git a/oplus-fwk/src/com/oplus/shortcuts/ShortcutLoader.java b/oplus-fwk/src/com/oplus/shortcuts/ShortcutLoader.java
+index 6328823a..1a59175f 100644
+--- a/oplus-fwk/src/com/oplus/shortcuts/ShortcutLoader.java
++++ b/oplus-fwk/src/com/oplus/shortcuts/ShortcutLoader.java
+@@ -2,46 +2,136 @@ package com.oplus.shortcuts;
+ 
+ import android.content.Context;
+ import android.content.IntentFilter;
++import android.content.pm.ShortcutInfo;
++import android.os.AsyncTask;
+ import android.os.UserHandle;
++import android.service.chooser.ChooserTarget;
+ 
+ import com.oplus.shortcuts.chooser.DisplayResolveInfo;
+ import com.oplus.wrapper.app.prediction.AppPredictor;
++import com.oplus.wrapper.app.prediction.AppTarget;
+ 
+-import java.util.Collections;
++import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
++import java.util.concurrent.Executor;
++import java.util.concurrent.atomic.AtomicReference;
+ import java.util.function.Consumer;
+ 
+ /**
+- * Closure stub. The real loader asynchronously reports Result objects through
+- * the callback; this no-op stub never reports, so its nested data holders are
+- * never populated by us. Fields carry safe empty defaults for any read.
++ * LOS shim of the OEM com.oplus.shortcuts.ShortcutLoader (OOS16.0.8 oplus-framework.jar).
++ * The OEM loader posts exactly one Result per queryShortcuts() call through the callback
++ * on the main executor — even when zero share shortcuts match — which is what lets the
++ * OppoGallery2 share sheet resolve its direct-share strip. This shim has no shortcut
++ * backend (no OplusLauncherAppsManager), so it always reports the OEM zero-match shape:
++ * Result(false, <requested appTargets>, new ShortcutResultInfo[0], fresh HashMaps).
++ * OppoGallery2 only ever calls the public constructor and queryShortcuts(); the predictor
++ * it passes is always null because our AppPredictorFactory.create() returns null.
+  */
+ public class ShortcutLoader {
+ 
++    private static final Request NO_REQUEST = new Request(new DisplayResolveInfo[0]);
++
++    private final AtomicReference<Consumer<Result>> mCallback = new AtomicReference<>();
++    private final AtomicReference<Request> mActiveRequest = new AtomicReference<>(NO_REQUEST);
++    private final IntentFilter mTargetIntentFilter;
++    private final Executor mBackgroundExecutor;
++    private final Executor mCallbackExecutor;
++
+     public ShortcutLoader(Context context, AppPredictor appPredictor, UserHandle userHandle,
+-            IntentFilter targetIntentFilter, Consumer callback) {
++            IntentFilter targetIntentFilter, Consumer<Result> callback) {
++        // OEM: this(context, appPredictor, userHandle, /* isPersonalProfile */ true,
++        //         targetIntentFilter, AsyncTask.SERIAL_EXECUTOR, context.getMainExecutor(), callback)
++        mTargetIntentFilter = targetIntentFilter;
++        mBackgroundExecutor = AsyncTask.SERIAL_EXECUTOR;
++        mCallbackExecutor = context.getMainExecutor();
++        mCallback.set(callback);
++        // OEM registers AppPredictor prediction updates here when appPredictor != null.
++        // Our AppPredictorFactory stub always yields null (and the wrapper AppPredictor
++        // stub is memberless), so there is nothing to register.
+     }
+ 
+     public void queryShortcuts(DisplayResolveInfo[] appTargets) {
+-        // no-op: never reports back through the callback
++        // OEM ShortcutLoader.queryShortcuts (source line 171-176)
++        if (isDestroyed()) {
++            return;
++        }
++        mActiveRequest.set(new Request(appTargets));
++        mBackgroundExecutor.execute(this::loadShortcuts);
++    }
++
++    /** OEM public surface (source line 150-155); OppoGallery2 does not call it today. */
++    public void destroy() {
++        mCallback.getAndSet(null);
++    }
++
++    private boolean isDestroyed() {
++        return mCallback.get() == null;
++    }
++
++    private void loadShortcuts() {
++        // OEM queryDirectShareTargets() bails without reporting only when the intent
++        // filter is null; in every other (predictor-less) case it queries the share
++        // targets and ALWAYS posts a Result — empty when nothing matches. The shim
++        // reports that stock zero-match shape directly.
++        if (mTargetIntentFilter == null) {
++            return;
++        }
++        DisplayResolveInfo[] appTargets = mActiveRequest.get().appTargets;
++        postReport(new Result(false, appTargets, new ShortcutResultInfo[0],
++                new HashMap<>(), new HashMap<>()));
++    }
++
++    private void postReport(Result result) {
++        // OEM postReport (source line 298): always delivered via the callback executor
++        // (main thread), never synchronously from queryShortcuts.
++        mCallbackExecutor.execute(() -> report(result));
++    }
++
++    private void report(Result result) {
++        // OEM report (source line 303-307)
++        Consumer<Result> callback = mCallback.get();
++        if (callback != null) {
++            callback.accept(result);
++        }
++    }
++
++    private static class Request {
++        private final DisplayResolveInfo[] appTargets;
++
++        Request(DisplayResolveInfo[] targets) {
++            appTargets = targets;
++        }
+     }
+ 
+     public static class Result {
+-        public boolean isFromAppPredictor = false;
+-        public DisplayResolveInfo[] appTargets = new DisplayResolveInfo[0];
+-        public ShortcutResultInfo[] shortcutsByApp = new ShortcutResultInfo[0];
+-        public Map directShareAppTargetCache = Collections.emptyMap();
+-        public Map directShareShortcutInfoCache = Collections.emptyMap();
+-
+-        @Override
+-        public int hashCode() {
+-            return 0;
++        public final boolean isFromAppPredictor;
++        public final DisplayResolveInfo[] appTargets;
++        public final ShortcutResultInfo[] shortcutsByApp;
++        public final Map<ChooserTarget, AppTarget> directShareAppTargetCache;
++        public final Map<ChooserTarget, ShortcutInfo> directShareShortcutInfoCache;
++
++        public Result(boolean isFromAppPredictor, DisplayResolveInfo[] appTargets,
++                ShortcutResultInfo[] shortcutsByApp,
++                Map<ChooserTarget, AppTarget> directShareAppTargetCache,
++                Map<ChooserTarget, ShortcutInfo> directShareShortcutInfoCache) {
++            this.isFromAppPredictor = isFromAppPredictor;
++            this.appTargets = appTargets;
++            this.shortcutsByApp = shortcutsByApp;
++            this.directShareAppTargetCache = directShareAppTargetCache;
++            this.directShareShortcutInfoCache = directShareShortcutInfoCache;
+         }
++        // NOTE: no hashCode() override — the OEM Result has none; OppoGallery2 calls
++        // result.hashCode() (fs6 data-class hashCode) and stock resolves Object.hashCode().
+     }
+ 
+     public static class ShortcutResultInfo {
+-        public DisplayResolveInfo appTarget;
+-        public List shortcuts = Collections.emptyList();
++        public final DisplayResolveInfo appTarget;
++        public final List<ChooserTarget> shortcuts;
++
++        public ShortcutResultInfo(DisplayResolveInfo appTarget, List<ChooserTarget> shortcuts) {
++            this.appTarget = appTarget;
++            this.shortcuts = shortcuts;
++        }
+     }
+ }
+diff --git a/oplus-fwk/src/com/oplus/util/OplusPlatformLevelUtils.java b/oplus-fwk/src/com/oplus/util/OplusPlatformLevelUtils.java
+index b569b3f3..cc146328 100644
+--- a/oplus-fwk/src/com/oplus/util/OplusPlatformLevelUtils.java
++++ b/oplus-fwk/src/com/oplus/util/OplusPlatformLevelUtils.java
+@@ -2,16 +2,22 @@ package com.oplus.util;
+ 
+ import android.content.Context;
+ import android.os.SystemProperties;
++import android.util.Log;
++
++import java.lang.reflect.Method;
+ 
+ /**
+- * Minimal LOS shim for the OEM com.oplus.util.OplusPlatformLevelUtils (absent from the LOS
+- * oplus-fwk). The OEM class computes device RAM/CPU/GPU performance tiers from ro.soc.model +
+- * framework resource arrays; those resources are not present on LOS, so this returns safe
+- * flagship defaults (LEVEL_HIGH) for the platform getters and the real props for the
+- * animation/gaussian getters. Matches the OEM public surface the OEM apps call
+- * (getInstance/getPlatformLevel/getPlatformAnimationLevel/getPlatformGaussianLevel).
++ * LOS shim of the OEM com.oplus.util.OplusPlatformLevelUtils (OOS16.0.8 oplus-framework.jar).
++ * The OEM derives sCpuLevel/sGpuLevel from oplus:array/{high,middle,low}_{cpu,gpu}_list keyed
++ * on ro.soc.model. On infiniti OOS16.0.8 ro.soc.model=SM8850 appears in NONE of the lists
++ * (they end at SM8650) and no RRO extends them, so the stock device computes -1 (LEVEL_UNDEF)
++ * for both; the level-getter fallbacks then land on LEVEL_HIGH. The constants below reproduce
++ * the exact stock values without the resource machinery.
+  */
+ public class OplusPlatformLevelUtils {
++    private static final String TAG = "OplusPlatformLevelUtils";
++    private static final long GB = 0x40000000L;
++
+     public static final int LEVEL_UNDEF = -1;
+     public static final int LEVEL_LOW = 1;
+     public static final int LEVEL_MIDDLE = 2;
+@@ -20,11 +26,29 @@ public class OplusPlatformLevelUtils {
+     public static final int LEVEL_TYPE_FOR_CPU = 2;
+     public static final int LEVEL_TYPE_FOR_GPU = 3;
+ 
+-    public static final boolean IS_LIGHT_OS = SystemProperties.getBoolean("ro.oplus.lightos", false);
++    private static final int THRESHOLD_LOW_RAM = 4;
++    private static final int THRESHOLD_HIGH_RAM = 12;
++
++    public static final boolean IS_LIGHT_OS =
++            SystemProperties.getBoolean("ro.oplus.lightos", false);
++    public static final int TOTAL_RAM = obtainRam();
++
++    private static final int ANIMATION_LEVEL =
++            SystemProperties.getInt("ro.oplus.animationlevel", 0);
++    private static final int GAUSSIAN_LEVEL =
++            SystemProperties.getInt("ro.oplus.gaussianlevel", 0);
++
++    // Stock-computed values on infiniti OOS16.0.8 (SM8850 absent from the res arrays).
++    private static final int sRamLevel = initPlatformRamLevel();
++    private static final int sCpuLevel = LEVEL_UNDEF;
++    private static final int sGpuLevel = LEVEL_UNDEF;
+ 
+     private static volatile OplusPlatformLevelUtils sInstance = null;
+ 
+     private OplusPlatformLevelUtils(Context context) {
++        if (context == null) {
++            Log.e(TAG, "OplusPlatformLevelUtils mContext is null!");
++        }
+     }
+ 
+     public static OplusPlatformLevelUtils getInstance(Context context) {
+@@ -38,15 +62,67 @@ public class OplusPlatformLevelUtils {
+         return sInstance;
+     }
+ 
++    /** OEM source line 301-308. Stock OOS16.0.8 on infiniti: RAM->3, CPU->-1, GPU->-1. */
+     public int getPlatformLevel(int type) {
+-        return LEVEL_HIGH;
++        if (type == LEVEL_TYPE_FOR_RAM) {
++            return sRamLevel;
++        }
++        if (type == LEVEL_TYPE_FOR_CPU) {
++            return sCpuLevel;
++        }
++        if (type == LEVEL_TYPE_FOR_GPU) {
++            return sGpuLevel;
++        }
++        return LEVEL_UNDEF;
+     }
+ 
++    /** OEM source line 322-331. Stock OOS16.0.8 on infiniti returns LEVEL_HIGH (3). */
+     public int getPlatformAnimationLevel() {
+-        return SystemProperties.getInt("ro.oplus.animationlevel", 0);
++        if (ANIMATION_LEVEL >= LEVEL_LOW && ANIMATION_LEVEL <= LEVEL_HIGH) {
++            return ANIMATION_LEVEL;
++        }
++        if (IS_LIGHT_OS) {
++            return LEVEL_LOW;
++        }
++        if (sGpuLevel == LEVEL_MIDDLE || sGpuLevel == LEVEL_HIGH) {
++            return sGpuLevel;
++        }
++        return LEVEL_HIGH;
+     }
+ 
++    /** OEM source line 340-347. Stock OOS16.0.8 on infiniti returns LEVEL_HIGH (3). */
+     public int getPlatformGaussianLevel() {
+-        return SystemProperties.getInt("ro.oplus.gaussianlevel", 0);
++        if (GAUSSIAN_LEVEL >= LEVEL_LOW && GAUSSIAN_LEVEL <= LEVEL_HIGH) {
++            return GAUSSIAN_LEVEL;
++        }
++        if (sGpuLevel != LEVEL_UNDEF) {
++            return sGpuLevel;
++        }
++        return LEVEL_HIGH;
++    }
++
++    /** OEM initPlatformRamLevel, source line 251-257. 12/16 GB SKUs -> LEVEL_HIGH. */
++    private static int initPlatformRamLevel() {
++        if (TOTAL_RAM <= THRESHOLD_LOW_RAM) {
++            return LEVEL_LOW;
++        }
++        if (TOTAL_RAM >= THRESHOLD_HIGH_RAM) {
++            return LEVEL_HIGH;
++        }
++        return LEVEL_MIDDLE;
++    }
++
++    /** OEM obtainRam, source line 238-247 (verbatim, incl. reflection + GiB round-up). */
++    private static int obtainRam() {
++        try {
++            Class<?> clazz = Class.forName("android.os.Process");
++            Method method = clazz.getMethod("getTotalMemory");
++            long totalMemory = (Long) method.invoke(null);
++            long totalPhysicalMemory = (totalMemory + GB - 1) & ~(GB - 1);
++            return (int) (totalPhysicalMemory / 1024 / 1024 / 1024);
++        } catch (Exception e) {
++            Log.e(TAG, e.getMessage());
++            return -1;
++        }
+     }
+ }
+-- 
+2.50.1 (Apple Git-155)
+

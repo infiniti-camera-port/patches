@@ -1,0 +1,183 @@
+From 090e6e0bc602fc5294b6ed37ecdadb9a7e35c842 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Fri, 3 Jul 2026 15:34:55 +0000
+Subject: [PATCH] sm8850-common-camera: add the SoC-common camera product/board
+ fragments
+
+First content drop of the two-tier camera topology split (task-8 design,
+sections 4-5):
+
+- sm8850-common-camera.mk: SoC-common camera product fragment, inherited
+  by the per-device camera fragments. Documents the seven "common"-bucket
+  surfaces (registration vintf/rc, camx impl libs, system_ext configs,
+  init.camera_process.rc, the 526-file odm/etc/camera asset base,
+  OplusCommercialEngineerCamera) whose payload bytes stay in
+  vendor/oplus/camera per the deferred vendor-tier split (task-8
+  section 3), and carries the family-order-only camera properties
+  (task-8 section 4 "Order-only camera props" row) moved out of
+  device/oneplus/sm8850-common vendor.prop.
+- BoardConfigCommonCamera.mk + sepolicy/vendor: common camera sepolicy
+  dir moved out of device/oneplus/sm8850-common (BoardConfigCommon.mk
+  BOARD_SEPOLICY_DIRS line + sepolicy/vendor/file_contexts, introduced
+  there by the "camera: public.libraries fixup" commit).
+- README: replace the scaffold with the real repo contract.
+
+Change-Id: Ic6fbe29215f18802b9c032b5b6ec6706164d590d
+---
+ BoardConfigCommonCamera.mk    | 13 ++++++
+ README.md                     | 78 +++++++++++------------------------
+ sepolicy/vendor/file_contexts |  1 +
+ sm8850-common-camera.mk       | 30 ++++++++++++++
+ 4 files changed, 69 insertions(+), 53 deletions(-)
+ create mode 100644 BoardConfigCommonCamera.mk
+ create mode 100644 sepolicy/vendor/file_contexts
+ create mode 100644 sm8850-common-camera.mk
+
+diff --git a/BoardConfigCommonCamera.mk b/BoardConfigCommonCamera.mk
+new file mode 100644
+index 0000000..4e03e11
+--- /dev/null
++++ b/BoardConfigCommonCamera.mk
+@@ -0,0 +1,13 @@
++#
++# Copyright (C) 2026 The LineageOS Project
++#
++# SPDX-License-Identifier: Apache-2.0
++#
++
++# SoC-common (sm8850) camera board fragment (task-8 topology section 5).
++# Included by the BoardConfig of camera-port device targets
++# (device/oneplus/infiniti/BoardConfig.mk).
++
++# SEPolicy: common camera vendor file_contexts overrides (moved from
++# device/oneplus/sm8850-common BoardConfigCommon.mk + sepolicy/vendor)
++BOARD_SEPOLICY_DIRS += device/oneplus/sm8850-common-camera/sepolicy/vendor
+diff --git a/README.md b/README.md
+index 3b8b52e..05b6a24 100644
+--- a/README.md
++++ b/README.md
+@@ -1,53 +1,25 @@
+-# device_oneplus_sm8850-common-camera
+-
+-Build-tree path: `device/oneplus/sm8850-common-camera`
+-Branch: `staging/16.0_crdroid` (integration branch for the crDroid 16.0 camera split)
+-
+-## Purpose
+-
+-SoC-common camera device tree for OnePlus sm8850 ("canoe") devices. Carries ONLY the camera
+-surface proven byte-identical across all four sm8850 OTA dumps:
+-
+-- Camera HAL/service registration: `vendor.qti.camera.{provider,offlinecamera-impl,aon-impl}.xml`,
+-  `provider-service_64.rc` + provider binary, system `cameraservice.service` vintf manifest,
+-  `cameraserver.rc`, odm oplus AIDL manifests (cammidas, camera_rfi, sendextcamcmd, aon-impl).
+-- `camx.provider-impl.so` + `camx.device-impl.so`.
+-- system_ext camera configs (`cameraserver_proxy_config.xml`, `sys_camera_optimize_config.xml`,
+-  `property_list.prop`).
+-- `vendor/etc/vintf` set incl. `manifest_canoe.xml`.
+-- `odm/etc/init/init.camera_process.rc` (OOS form).
+-- The 526-file `odm/etc/camera` shared algorithm asset base (LUTs, basictone, filters_lut,
+-  seg/beauty models).
+-- Order-only camera props and `OplusCommercialEngineerCamera.apk`.
+-
+-Per-device camera content (blob payloads, sensor tuning, `CameraHWConfiguration.config`,
+-presence-delta files) lives in per-device camera repos such as
+-`device_oneplus_infiniti-camera`; it is intentionally NOT here.
+-
+-## Evidence basis
+-
+-Dump analysis (Task 5 of the crDroid sm8850 camera-split plan, 2026-07-03) found:
+-
+-- The registration surface and shared asset base above are **byte-identical (sha256) across all
+-  four sm8850 dumps** — the sole common-ization criterion used here.
+-- The vendor camera blob stack splits into **two provenance families** that must never be mixed:
+-  family A = infiniti/op15 (180-file drop, only 2/180 files match family B); family B =
+-  macan/macanc/fairlady (201-file drop, 201/201 byte-identical within the trio). Blob payloads
+-  are therefore per-family/per-device, never in this repo.
+-
+-Source dumps (identities from on-dump props, not filenames):
+-
+-| device | model / board / prj | OS / OTA |
+-|---|---|---|
+-| infiniti — OnePlus 15 (IN) | CPH2745(IN) / OP611FL1 / 24863 | OxygenOS 16.0.8.300(EX01), OTA 11.A.42 |
+-| macan — OnePlus 15R (ROW) | CPH2769 / OP612DL1 / 24877 | OxygenOS 16.0.8.300(EX01), OTA 11.A.47 |
+-| macanc — OnePlus Ace 6T (CN) | PLR110 / OP6117L1 / 24855 | ColorOS 16.0.8.301(CN01), OTA 11.A.62 |
+-| fairlady — OnePlus 15T (CN) | PLZ110 / OP64DDL1 / 25821 | ColorOS 16.0.8.300(CN01), OTA 11.A.31 |
+-| op15 (reference) — OnePlus 15 (ROW) | CPH2747 / OP611FL1 / 24863 | OxygenOS 16.0.5.703(EX01) |
+-| dodge (reference, sm8750) — OnePlus 13 | CPH2653 / OP5D55L1 / 23893 | OxygenOS 16.0.8.301(EX01) |
+-
+-## Content
+-
+-This repo is scaffolding only for now. The mk fragments, board-config fragment, sepolicy, and
+-proprietary-files listings land via Task 12 of the plan, which also adds this project to the
+-build manifest. Do not add this repo to a manifest before that content exists.
++# device/oneplus/sm8850-common-camera
++
++SoC-common (sm8850 / kaanapali) camera device fragment for the OnePlus
++Oplus-camera port — the "common" tier of the two-tier camera topology
++split (task-8 design).
++
++Scope: only the camera surface proven byte-identical across all four
++sm8850 reference dumps (infiniti / op15 / macan / macanc) belongs here —
++HAL/service registration (vintf + init rc), camx provider/device impl
++libraries, system_ext camera configs, the OOS-form
++init.camera_process.rc, the shared 526-file odm/etc/camera algorithm
++asset base, OplusCommercialEngineerCamera, the family-order-only camera
++properties, and the common camera sepolicy dir.
++
++Layout:
++- `sm8850-common-camera.mk` — common camera product fragment; inherited
++  by the per-device camera fragments
++  (`device/oneplus/<device>-camera/<device>-camera.mk`).
++- `BoardConfigCommonCamera.mk` — common camera board fragment; included
++  by the device BoardConfig of camera-port targets.
++- `sepolicy/vendor/` — common camera vendor sepolicy overrides.
++
++The blob payload bytes are hosted by `vendor/oplus/camera` (the
++vendor-tier common/per-device split is deferred). Per-device camera
++config lives in the per-device camera repos and never lands here.
+diff --git a/sepolicy/vendor/file_contexts b/sepolicy/vendor/file_contexts
+new file mode 100644
+index 0000000..e377fd0
+--- /dev/null
++++ b/sepolicy/vendor/file_contexts
+@@ -0,0 +1 @@
++# Vendor SELinux file_contexts overrides
+diff --git a/sm8850-common-camera.mk b/sm8850-common-camera.mk
+new file mode 100644
+index 0000000..64a2a84
+--- /dev/null
++++ b/sm8850-common-camera.mk
+@@ -0,0 +1,30 @@
++#
++# Copyright (C) 2026 The LineageOS Project
++#
++# SPDX-License-Identifier: Apache-2.0
++#
++
++# SoC-common (sm8850/kaanapali) camera product fragment.
++#
++# Carries the camera surface proven byte-identical across all four sm8850
++# dumps (infiniti/op15/macan/macanc): HAL/service registration vintf+rc,
++# camx.{provider,device}-impl.so, the system_ext camera configs, the
++# OOS-form init.camera_process.rc, the 526-file odm/etc/camera algorithm
++# asset base and OplusCommercialEngineerCamera (camera topology doc,
++# task-8 section 4 "common" rows).
++#
++# The blob/config payload bytes for those rows are delivered by the
++# vendor/oplus/camera payload repo — the vendor-tier common/per-device
++# split is deferred (task-8 section 3) — which the per-device camera
++# fragment (e.g. device/oneplus/infiniti-camera/infiniti-camera.mk)
++# inherits alongside this file. Per-device camera config never lands
++# here (task-8 section 1 rule: commonize only within a proven-identical
++# surface).
++
++# Camera props common to the sm8850 family (order-only across all four
++# dumps; task-8 section 4 "Order-only camera props" row; moved from
++# device/oneplus/sm8850-common vendor.prop)
++PRODUCT_VENDOR_PROPERTIES += \
++    ro.camera.enableCamera1MaxZsl=1 \
++    ro.camera.notify_nfc=1 \
++    ro.camerax.extensions.enabled=true
+-- 
+2.50.1 (Apple Git-155)
+

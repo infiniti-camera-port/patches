@@ -1,0 +1,65 @@
+From 42f511e4c9190a0c31b4314c055207a828246a41 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Thu, 2 Jul 2026 22:25:24 -0600
+Subject: [PATCH 24/24] oplus: vintf: declare the FIDO CA HALs in the device
+ framework matrix
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The FIDO CA chain ships two AIDL HAL instances in the device (odm) VINTF
+manifest (vendor.oplus.hardware.fido.fidoca / fido2ca IFidoDaemon/default,
+from manifest_oplus_fido.xml / manifest_oplus_fido2.xml). This build
+enforces VINTF compatibility (checkvintf --check-compat, FCM >= 202504),
+which requires every device-manifest HAL instance to be specified in a
+framework compatibility matrix, otherwise:
+
+  ERROR: files are incompatible: The following instances are in the device
+  manifest but not specified in framework compatibility matrix:
+      vendor.oplus.hardware.fido.fido2ca.IFidoDaemon/default (@1)
+      vendor.oplus.hardware.fido.fidoca.IFidoDaemon/default (@1)
+
+Declare both as optional device HALs in device_framework_matrix.xml
+(DEVICE_FRAMEWORK_COMPATIBILITY_MATRIX_FILE), mirroring the existing
+cryptoeng / fingerprintpay / camera.aon entries. Placed next to the other
+biometrics HAL. Clears the check_vintf_compatible failure.
+
+(cherry picked from commit f08265c1c03cc7d485cd1de2a0ed528c2a6497c9)
+
+Ledger: hardware_oplus.md Accepted Group C row 13 (f08265c1)
+Stub-matrix: task-9-stub-inventory.md row K14 — consumer: framework matrix must match shipped vendor FIDO/keystore CA HALs (build-dep/vintf, attestation lane); location: vintf/device_framework_matrix.xml
+Change-Id: I78d329b96d74ee205ea6af82079ed22e5852dcfc
+---
+ vintf/device_framework_matrix.xml | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/vintf/device_framework_matrix.xml b/vintf/device_framework_matrix.xml
+index eb51b304..bcbcd568 100644
+--- a/vintf/device_framework_matrix.xml
++++ b/vintf/device_framework_matrix.xml
+@@ -33,6 +33,22 @@
+             <instance>default</instance>
+         </interface>
+     </hal>
++    <hal format="aidl" optional="true">
++        <name>vendor.oplus.hardware.fido.fidoca</name>
++        <version>1</version>
++        <interface>
++            <name>IFidoDaemon</name>
++            <instance>default</instance>
++        </interface>
++    </hal>
++    <hal format="aidl" optional="true">
++        <name>vendor.oplus.hardware.fido.fido2ca</name>
++        <version>1</version>
++        <interface>
++            <name>IFidoDaemon</name>
++            <instance>default</instance>
++        </interface>
++    </hal>
+     <hal format="aidl" optional="true">
+         <name>vendor.oplus.hardware.camera.aon</name>
+         <version>1</version>
+-- 
+2.50.1 (Apple Git-155)
+

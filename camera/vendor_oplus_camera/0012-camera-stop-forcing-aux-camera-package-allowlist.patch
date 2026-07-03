@@ -1,0 +1,41 @@
+From 50e175f48f82250eaf282ff6d74f7d21b7c40f31 Mon Sep 17 00:00:00 2001
+From: Jonas Salo <salomannen1234@gmail.com>
+Date: Wed, 1 Jul 2026 20:24:39 -0600
+Subject: [PATCH 12/19] camera: stop forcing aux camera package allowlist
+
+Drop the vendor.camera.aux.packagelist product property so the build no
+longer forces an aux-camera exposure allowlist. The property whitelists
+packages that may enumerate auxiliary (hidden physical) camera IDs;
+carrying it here was dodge-port carry-over (59fd9a6 used
+com.oplus.camera), while OP15InfinityX observed that forcing a broad
+list exposes aux cameras to regular apps (Aperture picking up aux
+sensors) and removed it.
+
+Stock OOS 16.0.8 ships vendor.camera.aux.packagelist=org.codeaurora.snapcam
+in system/build.prop (a package absent from the device), i.e. no real
+package is allowlisted on the baseline and OplusCamera does not depend
+on this property for its own capture paths. Removing the line is
+functionally equivalent to the OOS baseline for every real package.
+
+Adapted-from: OP15InfinityX/android_device_oneplus_infiniti-camera@1f55ec3f2bbefbc4127f7406d05c37489f43b4e7 (https://github.com/OP15InfinityX/android_device_oneplus_infiniti-camera/commit/1f55ec3f2bbefbc4127f7406d05c37489f43b4e7)
+Adaptation-notes: our tree carried =com.oplus.camera (not the =* the source commit removes); removed the whole line against opluscamera.mk's current property block. OOS baseline evidence: system/build.prop:190 in infiniti_CPH2745_OOS16.0.8_11.A.42 dump.
+Change-Id: Ia994c661ce13bd9cf441f98d7023f1fd486b7365
+---
+ opluscamera.mk | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/opluscamera.mk b/opluscamera.mk
+index f65f9a4..44aa959 100644
+--- a/opluscamera.mk
++++ b/opluscamera.mk
+@@ -56,7 +56,6 @@ PRODUCT_PRODUCT_PROPERTIES += \
+     ro.vendor.oplus.vendorxml.enable=1 \
+     vendor.oplus.hdr.uniform.debug=1 \
+     oplus.software.camera.10bit=1 \
+-    vendor.camera.aux.packagelist=com.oplus.camera \
+     ro.oplus.camera.facing.front.need.disable.nfc=1 \
+     ro.oplus.camera.portrait.center.switch=oplus.switch.portrait.center \
+     ro.oplus.camera.portrait_center.prefix=oplus.portrait.center. \
+-- 
+2.50.1 (Apple Git-155)
+

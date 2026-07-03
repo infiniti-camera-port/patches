@@ -1,0 +1,90 @@
+From 1a0053948e36b6dd355eb416e8d855ef63c5865f Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Fri, 3 Jul 2026 00:26:46 +0000
+Subject: [PATCH 17/19] camera: ship the FIDO CA HAL chain for cryptoeng
+ device-attestation
+
+The cryptoeng@1.0-service is extracted ;DISABLE_DEPS, so its two FIDO-CA
+DT_NEEDED client stubs (fidoca-V1-ndk, fido2ca-V1-ndk) were never shipped
+and the linker kills it every start -> ICryptoeng/default never registers.
+An earlier change shipped the first missing dep (libqsee_keybox_ca.so); this
+ships the rest of the chain so cryptoeng links, starts and registers, and
+provides its FIDO backend:
+
+  - the 2 FIDO CA HAL daemons (fidoca@1.0-service, fido2ca@1.0-service),
+    their init rc, and their VINTF manifest fragments;
+  - the 4 -ndk / -factory libs (fidoca/fido2ca-V1-ndk, libfido/libfido2
+    _factory), 64- and 32-bit for stock parity;
+  - the fidotap / fidoctap secure_ta blobs the daemons QSEECom-load.
+
+All listed via proprietary-files.txt with ;DISABLE_DEPS exactly like the
+cryptoeng and libqsee_keybox_ca entries; extract-utils regenerates the
+module rules from each blob's real DT_NEEDED. No blob DT_NEEDED is edited.
+
+This registers ICryptoeng and revives cryptoeng's consumers (Widevine/HDCP,
+find-my-phone, PKI cert) and quiets the crash-loop. Note: hardware device
+attestation returns 10048 (qsee_km_get_encapsulated_key) on an unlocked
+bootloader -- a TrustZone lock-state gate -- so the cloud-attestation leg is
+expected non-functional on LOS. This is device-tree completeness, not a
+functional cloud feature (the AI editor was fixed separately via the OTA
+version property).
+
+Change-Id: I7301b4609273d298f97d44d8d1bd7245c2fb3fc8
+---
+ proprietary-files.txt | 40 ++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 40 insertions(+)
+
+diff --git a/proprietary-files.txt b/proprietary-files.txt
+index 879054e..1b86ce8 100644
+--- a/proprietary-files.txt
++++ b/proprietary-files.txt
+@@ -86,6 +86,46 @@ odm/lib64/lib_cryptoeng_api.so;DISABLE_DEPS
+ odm/lib64/libqsee_keybox_ca.so;DISABLE_DEPS
+ odm/lib64/vendor.oplus.hardware.cryptoeng-V1-ndk.so;MODULE_SUFFIX=_odm;DISABLE_DEPS
+ odm/lib64/vendor.oplus.hardware.cryptoeng@1.0.so;MODULE_SUFFIX=_odm;DISABLE_DEPS
++
++# FIDO CA HAL — cryptoeng device-attestation dependency.
++# cryptoeng@1.0-service is ;DISABLE_DEPS, so its FIDO DT_NEEDED must be listed
++# explicitly (same reason libqsee_keybox_ca.so was added in 178bf78). The two
++# daemons are cryptoeng's runtime IFidoDaemon binder servers; they QSEECom-load
++# the fidotap / fidoctap TAs. NEVER hand-edit any blob's DT_NEEDED.
++odm/bin/hw/vendor.oplus.hardware.fido.fidoca@1.0-service;DISABLE_DEPS
++odm/bin/hw/vendor.oplus.hardware.fido.fido2ca@1.0-service;DISABLE_DEPS
++odm/etc/init/vendor.oplus.hardware.fido.fidoca@1.0-service.rc
++odm/etc/init/vendor.oplus.hardware.fido.fido2ca@1.0-service.rc
++odm/etc/vintf/manifest/manifest_oplus_fido.xml
++odm/etc/vintf/manifest/manifest_oplus_fido2.xml
++odm/firmware/secure_ta/fidotap.b00
++odm/firmware/secure_ta/fidotap.b01
++odm/firmware/secure_ta/fidotap.b02
++odm/firmware/secure_ta/fidotap.b03
++odm/firmware/secure_ta/fidotap.b04
++odm/firmware/secure_ta/fidotap.b05
++odm/firmware/secure_ta/fidotap.b06
++odm/firmware/secure_ta/fidotap.b07
++odm/firmware/secure_ta/fidotap.b08
++odm/firmware/secure_ta/fidotap.mdt
++odm/firmware/secure_ta/fidoctap.b00
++odm/firmware/secure_ta/fidoctap.b01
++odm/firmware/secure_ta/fidoctap.b02
++odm/firmware/secure_ta/fidoctap.b03
++odm/firmware/secure_ta/fidoctap.b04
++odm/firmware/secure_ta/fidoctap.b05
++odm/firmware/secure_ta/fidoctap.b06
++odm/firmware/secure_ta/fidoctap.b07
++odm/firmware/secure_ta/fidoctap.b08
++odm/firmware/secure_ta/fidoctap.mdt
++odm/lib/libfido_factory.so;DISABLE_DEPS
++odm/lib/libfido2_factory.so;DISABLE_DEPS
++odm/lib/vendor.oplus.hardware.fido.fidoca-V1-ndk.so;DISABLE_DEPS
++odm/lib/vendor.oplus.hardware.fido.fido2ca-V1-ndk.so;DISABLE_DEPS
++odm/lib64/libfido_factory.so;DISABLE_DEPS
++odm/lib64/libfido2_factory.so;DISABLE_DEPS
++odm/lib64/vendor.oplus.hardware.fido.fidoca-V1-ndk.so;DISABLE_DEPS
++odm/lib64/vendor.oplus.hardware.fido.fido2ca-V1-ndk.so;DISABLE_DEPS
+ system_ext/priv-app/OplusAppPlatform/OplusAppPlatform.apk
+ 
+ my_product/lib64/libApsSuperEISPreviewJni.so:system_ext/lib64/libApsSuperEISPreviewJni.so
+-- 
+2.50.1 (Apple Git-155)
+

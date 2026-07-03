@@ -1,0 +1,80 @@
+From c0d61875a3e4e93f3a03fa25cb6bcd6bacfbd9cd Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Fri, 3 Jul 2026 15:34:55 +0000
+Subject: [PATCH] sm8850-common: move camera-scoped config out to the split
+ camera repos
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Execute the task-8 topology section 5 migration boundary for this repo
+("Moved OUT of device/oneplus/sm8850-common: only the camera-scoped
+lines/fragments"):
+
+- BoardConfigCommon.mk BOARD_SEPOLICY_DIRS camera line +
+  sepolicy/vendor/file_contexts (from "camera: public.libraries fixup")
+  -> device/oneplus/sm8850-common-camera BoardConfigCommonCamera.mk +
+  sepolicy/vendor, included from the camera-port device BoardConfig.
+- vendor.prop camera block -> the family-order-only props
+  (enableCamera1MaxZsl, notify_nfc, camerax.extensions; task-8 section 4
+  "Order-only camera props" row) move to sm8850-common-camera.mk; the
+  infiniti-bucket props (ro.hardware.camera=oemlayer.v2 family-A odm
+  oemlayer row; ro.camera.disableHeicUltraHDR '=true' vendor form row)
+  move to infiniti-camera.mk.
+
+Stays here on purpose: the gallery OLive feature XMLs, the Dolby Vision
+codec registration and the cryptoeng HAL init rc (not in the task-8
+camera bucket map), and the extract-utils camera entries
+(proprietary-files.txt lines + the public.libraries.txt blob fixup) —
+their relocation into proprietary-files-camera-common.txt is coupled to
+a vendor-repo regeneration and rides with the deferred vendor-tier
+split (task-8 section 3).
+
+Change-Id: I4a6244b6b9a8ff503b458404337f15a77f168a14
+---
+ BoardConfigCommon.mk          | 1 -
+ sepolicy/vendor/file_contexts | 1 -
+ vendor.prop                   | 7 -------
+ 3 files changed, 9 deletions(-)
+ delete mode 100644 sepolicy/vendor/file_contexts
+
+diff --git a/BoardConfigCommon.mk b/BoardConfigCommon.mk
+index d084adb..4aa4816 100644
+--- a/BoardConfigCommon.mk
++++ b/BoardConfigCommon.mk
+@@ -218,7 +218,6 @@ VENDOR_SECURITY_PATCH := $(BOOT_SECURITY_PATCH)
+ # SEPolicy
+ include device/qcom/sepolicy_vndr/SEPolicy.mk
+ include hardware/oplus/sepolicy/qti/SEPolicy.mk
+-BOARD_SEPOLICY_DIRS += $(COMMON_PATH)/sepolicy/vendor
+ 
+ # Verified Boot
+ BOARD_AVB_ENABLE := true
+diff --git a/sepolicy/vendor/file_contexts b/sepolicy/vendor/file_contexts
+deleted file mode 100644
+index e377fd0..0000000
+--- a/sepolicy/vendor/file_contexts
++++ /dev/null
+@@ -1 +0,0 @@
+-# Vendor SELinux file_contexts overrides
+diff --git a/vendor.prop b/vendor.prop
+index 2b41349..f598843 100644
+--- a/vendor.prop
++++ b/vendor.prop
+@@ -130,13 +130,6 @@ vendor.c2pa.service_start=1
+ vendor.c2pa_listener.service.enabled=false
+ vendor.c2pa_listener.service_start=1
+ 
+-# Camera
+-ro.camera.disableHeicUltraHDR=true
+-ro.camera.enableCamera1MaxZsl=1
+-ro.camera.notify_nfc=1
+-ro.camerax.extensions.enabled=true
+-ro.hardware.camera=oemlayer.v2
+-
+ # Chipset
+ ro.soc.manufacturer=QTI
+ ro.vendor.board.family=f-canoe
+-- 
+2.50.1 (Apple Git-155)
+

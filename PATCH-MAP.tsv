@@ -1,0 +1,20 @@
+# PATCH-MAP.tsv — patchdir <TAB> build-tree-path
+# Groups (2026-07-03 reorg, crdroid-sm8850-camera-split Task 14):
+#   camera/  = reusable OPlus camera-stack series (apply to any crDroid-class A16 tree)
+#   crdroid/ = crDroid-16.0-only base adaptation (meaningless off-crDroid)
+#   device/  = general device-tree improvements (upstreamable toward OnePlus-SM8850-Development / LineageOS)
+# Every series is a git format-patch export of <base>..staging/16.0_crdroid of its org repo;
+# bases are listed in README.md ("Regen" section). Apply in filename order with git am / git apply.
+# Legacy layout patch/<comma-path>/ + los-fix-build-patches/ are NOT mapped here (see README "Legacy").
+# crdroid/local_manifest is a reference COPY (manifest xml), not a patch series — intentionally unmapped.
+camera/hardware_oplus	hardware/oplus
+camera/frameworks_av	frameworks/av
+camera/frameworks_native	frameworks/native
+camera/frameworks_base	frameworks/base
+camera/vendor_oplus_camera	vendor/oplus/camera
+camera/device_oneplus_infiniti-camera	device/oneplus/infiniti-camera
+camera/device_oneplus_sm8850-common-camera	device/oneplus/sm8850-common-camera
+crdroid/vendor_oneplus_sm8850-common	vendor/oneplus/sm8850-common
+device/device_oneplus_infiniti	device/oneplus/infiniti
+device/device_oneplus_sm8850-common	device/oneplus/sm8850-common
+device/device_qcom_sepolicy_vndr	device/qcom/sepolicy_vndr/sm8850
