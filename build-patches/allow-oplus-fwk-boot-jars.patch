@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Fri, 3 Jul 2026 12:54:18 -0600
+Subject: [PATCH] check_boot_jars: allow oplus-fwk OEM stub packages on the
+ bootclasspath (minimal)
+
+The full crDroid boot-jars-package-check rejects hardware/oplus/oplus-fwk/
+oplus-fwk.jar because com.oplusx.sysapi.cryptoeng is not in
+package_allowed_list.txt. This namespace is load-bearing for the AIUnit
+CryptoengNative SDK, the oplus-fwk CryptoEng HAL client, and FIDO attestation.
+
+Add the mandatory com.oplusx.* namespace. Keep the coloros.deepthinker and
+itgsa.opensdk.wm namespaces documented but inactive until APK-linkage proof
+shows a live shipped consumer.
+---
+ scripts/check_boot_jars/package_allowed_list.txt | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/scripts/check_boot_jars/package_allowed_list.txt b/scripts/check_boot_jars/package_allowed_list.txt
+--- a/scripts/check_boot_jars/package_allowed_list.txt
++++ b/scripts/check_boot_jars/package_allowed_list.txt
+@@ -300,6 +300,15 @@ vendor\.oplus\..*
+ com\.oneplus\..*
+ vendor\.oneplus\..*
+ 
++# infiniti camera-port v3: oplus-fwk boot-jar OEM stub namespaces missing from crDroid base.
++# MANDATORY: com.oplusx.sysapi.cryptoeng is load-bearing for AIUnit CryptoengNative,
++# the cryptoeng HAL client, and FIDO attestation.
++com\.oplusx\..*
++# CONDITIONAL: activate only after APK-linkage proof shows a live shipped consumer.
++# com\.coloros\.deepthinker
++# com\.itgsa\.opensdk\.wm
++
+ # QC adds
+ com.qualcomm.qti
+ com.quicinc.tcmiface
+-- 
+2.49.0

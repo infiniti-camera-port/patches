@@ -26,6 +26,19 @@ carrying the `native`/`base` deltas; on a different base, port the equivalents f
 it's a diff on top of **`dodge-camera-port/vendor_oplus_camera`** (dodge tip + a curated camera series), and
 its `camera/*` blob tree is extract-generated, not committed.
 
+## build-patches/ — guarded build fixes
+
+`build-patches/` contains manual patches that must be applied after a fresh sync
+and before building. Run the guard from the Android source root:
+
+```
+python3 patches/build-patches/apply-build-patches.py --check-only
+python3 patches/build-patches/apply-build-patches.py
+```
+
+The check-only mode is a non-build gate. A build is authorized only by apply mode
+with every patch reporting `applied=YES`.
+
 ## los-fix-build-patches/ — base build fixes, NOT the camera port
 
 Fixes that only make a LineageOS 23.2 / Android 16 infiniti tree *compile* (legacy OMX AC-4, Pixelworks/iris

@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Fri, 3 Jul 2026 22:43:25 -0600
+Subject: [PATCH] gen_build_prop: restore userdebug variant so debuggable/root
+ works
+
+crDroid removed the userdebug return branch from get_build_variant, collapsing
+userdebug builds to user and disabling ro.debuggable. Restore the branch so
+adb root and the rooted-debugging developer toggle work when the product config
+allows userdebug debugging.
+---
+ scripts/gen_build_prop.py | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/scripts/gen_build_prop.py b/scripts/gen_build_prop.py
+--- a/scripts/gen_build_prop.py
++++ b/scripts/gen_build_prop.py
+@@ -28,6 +28,8 @@ TEST_KEY_DIR = "build/make/target/product/security"
+ def get_build_variant(product_config):
+   if product_config["Eng"]:
+     return "eng"
++  elif product_config["Debuggable"]:
++    return "userdebug"
+   else:
+     return "user"
+ 
+@@ -360,8 +362,10 @@ def append_additional_system_props(args):
+       enable_dalvik_lock_contention_logging = False
+     else:
+       # Disable debugging in userdebug builds if PRODUCT_NOT_DEBUGGABLE_IN_USERDEBUG
+-      # is set.
+-      if config["ProductNotDebuggableInUserdebug"]:
++      # is set. device/oneplus/infiniti clears it so userdebug keeps
++      # ro.debuggable=1 for adb root / the rooted-debugging toggle. Restoring
++      # the userdebug variant above makes this product gate reachable again.
++      if config["ProductNotDebuggableInUserdebug"]:
+         enable_target_debugging = False
+ 
+     # Disallow mock locations by default for user builds
+-- 
+2.49.0
