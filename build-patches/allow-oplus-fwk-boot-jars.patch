@@ -13,13 +13,13 @@ Add the mandatory com.oplusx.* namespace. Keep the coloros.deepthinker and
 itgsa.opensdk.wm namespaces documented but inactive until APK-linkage proof
 shows a live shipped consumer.
 ---
- scripts/check_boot_jars/package_allowed_list.txt | 9 +++++++++
- 1 file changed, 9 insertions(+)
+ scripts/check_boot_jars/package_allowed_list.txt | 8 ++++++++
+ 1 file changed, 8 insertions(+)
 
 diff --git a/scripts/check_boot_jars/package_allowed_list.txt b/scripts/check_boot_jars/package_allowed_list.txt
 --- a/scripts/check_boot_jars/package_allowed_list.txt
 +++ b/scripts/check_boot_jars/package_allowed_list.txt
-@@ -300,6 +300,15 @@ vendor\.oplus\..*
+@@ -300,6 +300,14 @@ vendor\.oplus\..*
  com\.oneplus\..*
  vendor\.oneplus\..*
  

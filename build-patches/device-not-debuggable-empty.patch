@@ -7,13 +7,13 @@ crDroid/Lineage set PRODUCT_NOT_DEBUGGABLE_IN_USERDEBUG to true in the common
 product config. Clear it after that inherit so add_json_bool emits false and
 the userdebug build keeps ro.debuggable=1.
 ---
- lineage_infiniti.mk | 9 +++++++++
- 1 file changed, 9 insertions(+)
+ lineage_infiniti.mk | 8 ++++++++
+ 1 file changed, 8 insertions(+)
 
 diff --git a/lineage_infiniti.mk b/lineage_infiniti.mk
 --- a/lineage_infiniti.mk
 +++ b/lineage_infiniti.mk
-@@ -14,6 +14,15 @@ $(call inherit-product, device/oneplus/infiniti/device.mk)
+@@ -14,6 +14,14 @@ $(call inherit-product, device/oneplus/infiniti/device.mk)
  # Inherit some common Lineage stuff.
  $(call inherit-product, vendor/lineage/config/common_full_phone.mk)
  
