@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Fri, 3 Jul 2026 22:43:25 -0600
+Subject: [PATCH] gen_build_prop: restore userdebug variant so debuggable/root
+ works
+
+crDroid removed the userdebug return branch from get_build_variant, collapsing
+userdebug builds to user and disabling ro.debuggable. Restore the branch so
+adb root and the rooted-debugging developer toggle work when the product config
+allows userdebug debugging.
+---
+ scripts/gen_build_prop.py | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/scripts/gen_build_prop.py b/scripts/gen_build_prop.py
+--- a/scripts/gen_build_prop.py
++++ b/scripts/gen_build_prop.py
+@@ -28,6 +28,8 @@ TEST_KEY_DIR = "build/make/target/product/security"
+ def get_build_variant(product_config):
+   if product_config["Eng"]:
+     return "eng"
++  elif product_config["Debuggable"]:
++    return "userdebug"
+   else:
+     return "user"
+ 
+-- 
+2.49.0

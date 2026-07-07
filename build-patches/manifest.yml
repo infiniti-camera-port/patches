@@ -1,0 +1,21 @@
+patches:
+  - name: allow-oplus-fwk-boot-jars
+    target_repo: build/soong
+    target_path: scripts/check_boot_jars/package_allowed_list.txt
+    apply_order: 1
+    sha256: 484c9ee1f1725021d359beafec2913bd03ffaaec67a89fd298131ce3541b4680
+    rationale: oplus-fwk needs the mandatory com.oplusx.* boot-jar allowlist namespace.
+
+  - name: restore-userdebug-variant
+    target_repo: build/soong
+    target_path: scripts/gen_build_prop.py
+    apply_order: 2
+    sha256: b21c7a9e3bcc87c91c5015b4cc477b5628576ec65f72ef0afbc30756a38cf379
+    rationale: Restore userdebug build variant handling so adb root and rooted debugging can work.
+
+  - name: device-not-debuggable-empty
+    target_repo: device/oneplus/infiniti
+    target_path: lineage_infiniti.mk
+    apply_order: 3
+    sha256: aa9d7cd73a0b339f2f5aa02cde6735ba3734085368ea28b6622e810c7c29bf85
+    rationale: Clear PRODUCT_NOT_DEBUGGABLE_IN_USERDEBUG after common product inherits.
