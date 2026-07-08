@@ -201,9 +201,9 @@ def required_added_lines(patch_file: Path) -> tuple[str, ...]:
 
 
 def content_satisfied(entry: BuildPatch, repo_root: Path, patch_file: Path) -> bool:
-    target_text = (repo_root / entry.target_repo / entry.target_path).read_text(encoding="utf-8")
+    target_lines = set((repo_root / entry.target_repo / entry.target_path).read_text(encoding="utf-8").splitlines())
     required_lines = required_added_lines(patch_file)
-    return bool(required_lines) and all(line in target_text for line in required_lines)
+    return bool(required_lines) and all(line in target_lines for line in required_lines)
 
 
 def check_one(entry: BuildPatch, repo_root: Path, check_only: bool) -> PatchResult:
