@@ -8,19 +8,18 @@ The full crDroid boot-jars-package-check rejects hardware/oplus/oplus-fwk/
 oplus-fwk.jar because OEM stub package namespaces are not in
 package_allowed_list.txt.
 
-Add the mandatory com.oplusx.* namespace. Also allow com.coloros.deepthinker:
-the Marker-3 infiniti build proves oplus-fwk.jar contains
-com.coloros.deepthinker.IColorDeepThinkerManager on the bootclasspath. Keep
-itgsa.opensdk.wm documented but inactive until APK-linkage proof shows a live
-shipped consumer.
+Add the mandatory com.oplusx.* namespace. Also allow com.coloros.deepthinker
+and com.itgsa.opensdk.wm: Marker-3 infiniti builds prove oplus-fwk.jar contains
+com.coloros.deepthinker.IColorDeepThinkerManager and
+com.itgsa.opensdk.wm.ActivityMultiWindowAllowance on the bootclasspath.
 ---
- scripts/check_boot_jars/package_allowed_list.txt | 10 ++++++++++
- 1 file changed, 10 insertions(+)
+ scripts/check_boot_jars/package_allowed_list.txt | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
 
 diff --git a/scripts/check_boot_jars/package_allowed_list.txt b/scripts/check_boot_jars/package_allowed_list.txt
 --- a/scripts/check_boot_jars/package_allowed_list.txt
 +++ b/scripts/check_boot_jars/package_allowed_list.txt
-@@ -300,6 +300,16 @@ vendor\.oplus\..*
+@@ -300,6 +300,17 @@ vendor\.oplus\..*
  com\.oneplus\..*
  vendor\.oneplus\..*
  
@@ -30,9 +29,10 @@ diff --git a/scripts/check_boot_jars/package_allowed_list.txt b/scripts/check_bo
 +# BUILD-PROVEN: oplus-fwk.jar exports com.coloros.deepthinker.IColorDeepThinkerManager
 +# during the Marker-3 infiniti build boot-jar package check.
 +com\.coloros\.deepthinker
++# BUILD-PROVEN: oplus-fwk.jar exports com.itgsa.opensdk.wm.ActivityMultiWindowAllowance
++# during the Marker-3 infiniti build boot-jar package check.
++com\.itgsa\.opensdk\.wm
 +com\.oplusx\..*
-+# CONDITIONAL: activate only after APK-linkage proof shows a live shipped consumer.
-+# com\.itgsa\.opensdk\.wm
 +
  # QC adds
  com.qualcomm.qti

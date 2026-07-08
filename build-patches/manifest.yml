@@ -3,8 +3,8 @@ patches:
     target_repo: build/soong
     target_path: scripts/check_boot_jars/package_allowed_list.txt
     apply_order: 1
-    sha256: cda4ba999f7e44733adba15a5d3e34caee0b472f59092ed72664dbc779c2e790
-    rationale: oplus-fwk needs the mandatory com.oplusx.* boot-jar allowlist namespace and build-proven com.coloros.deepthinker package.
+    sha256: 47667ed50271914652981618f6dae476e1d661b5c673b16ef6e813e4e5d10f85
+    rationale: oplus-fwk needs the mandatory com.oplusx.* boot-jar allowlist namespace and build-proven com.coloros.deepthinker/com.itgsa.opensdk.wm packages.
 
   - name: restore-userdebug-variant
     target_repo: build/soong
