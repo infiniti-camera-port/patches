@@ -13,6 +13,7 @@ from support import (
     create_repo_root,
     output_of,
     run_overlay,
+    set_git_executable,
     write_git_wrapper,
 )
 
@@ -69,8 +70,9 @@ class RuntimeTransactionTests(unittest.TestCase):
     def wrapper_environment(self, fault: str) -> dict[str, str]:
         wrapper_dir = self.scratch / "bin"
         wrapper_dir.mkdir(exist_ok=True)
-        write_git_wrapper(wrapper_dir, self.repo_root, fault)
-        return {"PATH": f"{wrapper_dir}{os.pathsep}{os.environ['PATH']}"}
+        wrapper = write_git_wrapper(wrapper_dir, self.repo_root, fault)
+        set_git_executable(self.overlay, wrapper)
+        return {"PATH": os.environ["PATH"]}
 
     def test_scattered_added_lines_are_not_accepted_as_satisfied(self) -> None:
         lines = added_payload_lines(self.overlay / "allow-oplus-fwk-boot-jars.patch")

@@ -13,6 +13,7 @@ from support import (
     output_of,
     replace_manifest,
     run_overlay,
+    set_git_executable,
     write_git_wrapper,
 )
 
@@ -114,7 +115,8 @@ class ManifestSecurityTests(unittest.TestCase):
     def test_inherited_git_environment_is_not_visible_to_git(self) -> None:
         wrapper_dir = self.scratch / "bin"
         wrapper_dir.mkdir()
-        write_git_wrapper(wrapper_dir, self.repo_root, "inspect")
+        wrapper = write_git_wrapper(wrapper_dir, self.repo_root, "inspect")
+        set_git_executable(self.overlay, wrapper)
         config = self.scratch / "gitconfig"
         config.write_text("[core]\n\tfsmonitor = /does/not/run\n", encoding="utf-8")
         result = run_overlay(

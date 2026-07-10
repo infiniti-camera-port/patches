@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import stat
 import subprocess
 import tempfile
@@ -9,7 +10,14 @@ from typing import Final, Mapping, NamedTuple, Protocol, Sequence
 
 from build_patch_manifest import ResolvedPatch, paths_are_current
 
-ALLOWED_ENVIRONMENT: Final = frozenset({"PATH", "PATHEXT", "SYSTEMROOT", "TMPDIR", "TEMP", "TMP", "LANG"})
+ALLOWED_ENVIRONMENT: Final = frozenset({"TMPDIR", "TEMP", "TMP", "LANG"})
+GIT_EXECUTABLE: Final = "/usr/bin/git"
+EXECUTABLE_CONFIG_PATTERN: Final = re.compile(
+    r"^(?:include(?:if)?\.|extensions\.worktreeConfig|core\.(?:hooksPath|fsmonitor|sshCommand)|"
+    r"filter\..*\.(?:clean|smudge|process|required)|diff\..*\.command|"
+    r"merge\..*\.driver|interactive\.diffFilter|pager\.)",
+    re.IGNORECASE,
+)
 
 
 class CommandResult(NamedTuple):
@@ -45,6 +53,15 @@ class DerivationError(Exception):
         return self.message
 
 
+class GitConfigError(Exception):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+    def __str__(self) -> str:
+        return self.message
+
+
 class GitOperations(Protocol):
     def apply(self, repo: Path, patch_bytes: bytes, *, reverse: bool = False) -> CommandResult:
         ...
@@ -62,9 +79,15 @@ def safe_git_environment(source: Mapping[str, str] | None = None) -> dict[str, s
     }
     environment.update(
         {
+            "GIT_ASKPASS": "/usr/bin/false",
+            "GIT_ATTR_NOSYSTEM": "1",
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_EDITOR": "/usr/bin/true",
+            "GIT_PAGER": "cat",
+            "GIT_SSH_COMMAND": "/usr/bin/false",
             "GIT_TERMINAL_PROMPT": "0",
+            "PATH": "/usr/bin:/bin",
         }
     )
     return environment
@@ -77,12 +100,16 @@ class GitClient:
 
     def run(self, arguments: Sequence[str], cwd: Path, stdin: bytes | None = None) -> CommandResult:
         command = [
-            "git",
+            GIT_EXECUTABLE,
             "--no-optional-locks",
             "-c",
             f"core.hooksPath={self._hooks_directory}",
             "-c",
             "core.fsmonitor=false",
+            "-c",
+            f"core.attributesFile={os.devnull}",
+            "-c",
+            "core.pager=cat",
             *arguments,
         ]
         try:
@@ -117,6 +144,34 @@ class GitClient:
         arguments.append("-")
         return self.run(arguments, repo, patch_bytes)
 
+    def require_safe_repository(self, repo: Path) -> None:
+        config = self.run(["config", "--local", "--null", "--list", "--no-includes"], repo)
+        if not config.ok:
+            raise GitConfigError(f"cannot inspect local Git config for {repo}: {config.stderr or config.stdout}")
+        _validate_local_config(config.stdout, repo)
+        worktree = self.run(["rev-parse", "--git-path", "config.worktree"], repo)
+        if not worktree.ok:
+            raise GitConfigError(f"cannot locate worktree Git config for {repo}: {worktree.stderr or worktree.stdout}")
+        worktree_path = Path(worktree.stdout)
+        if not worktree_path.is_absolute():
+            worktree_path = repo / worktree_path
+        if worktree_path.exists() or worktree_path.is_symlink():
+            raise GitConfigError(f"worktree Git config is disabled for repository {repo}")
+
+
+def _validate_local_config(raw: str, repo: Path) -> None:
+    if not raw:
+        return
+    records = raw.split("\0")
+    if records[-1]:
+        raise GitConfigError(f"unsafe executable git config in repository {repo}: unterminated record")
+    for record in records[:-1]:
+        key, separator, _value = record.partition("\n")
+        if not key or not separator or any(ord(character) < 32 or ord(character) == 127 for character in key):
+            raise GitConfigError(f"unsafe executable git config in repository {repo}: malformed record")
+        if EXECUTABLE_CONFIG_PATTERN.match(key):
+            raise GitConfigError(f"unsafe executable git config in repository {repo}: {key}")
+
 
 def _mode(path: Path) -> int:
     return stat.S_IMODE(path.stat().st_mode)
@@ -144,6 +199,11 @@ def prepare_patches(resolved_patches: list[ResolvedPatch], git: GitClient) -> tu
     for resolved in resolved_patches:
         if not paths_are_current(resolved):
             errors.append(f"{resolved.entry.name}: repository or target path changed after validation")
+            continue
+        try:
+            git.require_safe_repository(resolved.repo_path)
+        except GitConfigError as exc:
+            errors.append(f"{resolved.entry.name}: {exc}")
             continue
         top_level = git.run(["rev-parse", "--show-toplevel"], resolved.repo_path)
         if not top_level.ok or Path(top_level.stdout) != resolved.repo_path:

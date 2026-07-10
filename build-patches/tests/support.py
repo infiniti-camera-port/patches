@@ -110,6 +110,18 @@ def replace_manifest(overlay: Path, old: str, new: str) -> None:
     manifest.write_text(content.replace(old, new, 1), encoding="utf-8")
 
 
+def set_git_executable(overlay: Path, executable: Path) -> None:
+    runtime = overlay / "build_patch_runtime.py"
+    content = runtime.read_text(encoding="utf-8")
+    declaration = 'GIT_EXECUTABLE: Final = "/usr/bin/git"'
+    if declaration not in content:
+        raise AssertionError("overlay fixture does not contain the trusted Git declaration")
+    runtime.write_text(
+        content.replace(declaration, f'GIT_EXECUTABLE: Final = "{executable}"', 1),
+        encoding="utf-8",
+    )
+
+
 def added_payload_lines(patch_file: Path) -> list[str]:
     return [
         line[1:]
