@@ -1,50 +1,59 @@
-# los-fix-build-patches — base / LineageOS build fixes (NOT the camera port)
+# Historical LineageOS 23.2 build fixes
 
-These patches make a **LineageOS 23.2 (Android 16) infiniti** tree *compile* given our branch
-composition — `frameworks/av` pinned to the OEM **A16** fork while its sibling repos are LineageOS
-base, plus a couple of base/sync artifacts. They are **explicitly NOT part of the Oplus camera port.**
-The camera-port patch set is in [`../patch/`](../patch) and is independent of everything here.
+> [!WARNING]
+> This is a retired reproduction lane. These four patches are not the current
+> crDroid source profile and not the guarded three-patch crDroid build overlay in
+> [`../build-patches/`](../build-patches). Do not apply them to the promoted
+> manifest unless you are intentionally reconstructing the old LineageOS
+> 23.2/OEM-A16-frameworks composition.
 
-They live here only so the build is reproducible and the attribution is unmistakable: nothing in this
-folder is camera work — it's base/OEM-inherited gaps and a sync artifact.
+These patches address base, codec, display, and generated-output issues from the
+historical composition. They are kept separate so non-camera fixes never enter
+the portable camera ranges.
 
-## Why a standalone patchset (and NOT committed into the org repos)
+| patch | target repo | historical purpose | SHA-256 |
+| --- | --- | --- | --- |
+| `0001-system_core-camera.h-add-CAMERA_FRAME_DATA_FD.patch` | `system/core` | add the CAF HAL1 constant expected by the old OEM `frameworks/av` | `90648387c66fb692ead56178882dc0d793431135fdb4e26bb72a7fff906e61c5` |
+| `0002-frameworks_av-ACodec-drop-incomplete-AC4Tbl.patch` | `frameworks/av` | remove an incomplete legacy OMX AC-4 table block | `5ec20793966d60020e3ce1b2c8986bf3af33972c38db81883635dbc7257fce1d` |
+| `0003-device_sm8850-common-extract-files-trim-pixelworks-vendor-suffix.patch` | `device/oneplus/sm8850-common` | stop generating dangling Pixelworks `_vendor` dependencies | `f07f3206c01283bc0524bea1ac58c56f75262ae3c943218f64682aa416b4977f` |
+| `0004-vendor_sm8850-common-Android.bp-bare-pixelworks-deps.patch` | `vendor/oneplus/sm8850-common` | repair the corresponding historical generated `Android.bp` output | `26f1a5d1d3eaba2848f0fd94d45953541ea6dc65f9346109544d1fd9c6864b1a` |
 
-These are deliberately kept as an overlay and **not** committed into the `infiniti-camera-port` source
-repos — to keep them out of camera-patch regeneration. The camera patches in `../patch/` are produced
-with `git format-patch <camera-base>..HEAD` per repo; that range captures *every* commit on the branch.
-If e.g. 0003 were committed onto `device/oneplus/sm8850-common`, the next regen would sweep that
-Pixelworks/iris fix into `patch/device,oneplus,sm8850-common/` as a bogus "camera" patch. Keeping the
-build fixes here means the org camera repos stay pristine and camera-patch regen yields *only* camera
-commits. (0004 would also be clobbered by the next extract anyway — the real fix is 0003 in
-`extract-files.py`.) Apply this overlay separately, after the camera stack.
+## Reproduction procedure
 
-## Patches
+Start from a clean historical Lineage checkout. Set `PATCHES_ROOT` to this
+repository's absolute path so `git -C` does not reinterpret a relative patch
+path inside the target repo:
 
-| # | apply from (repo) | what it does | why it is NOT camera-port |
-|---|---|---|---|
-| 0001 | `system/core` | declare the CAF HAL1 constant `CAMERA_FRAME_DATA_FD` (used by `frameworks/av@A16` `ICameraClient.cpp`, CodeAurora `969d880e03`) | OEM/CAF base constant for the legacy HAL1 path (dead on HAL3); not one of our camera commits |
-| 0002 | `frameworks/av` | drop the incomplete **OMX AC4-table** block (`eb913ff3a3` "Add AC4Tbl params… [1/2]", the `[2/2]` OMX-header half is absent) | legacy OMX/ACodec Dolby **AC-4 / codec2-era** scaffolding — superseded by Codec2; a community/OEM commit, nothing to do with the port |
-| 0003 | `device/oneplus/sm8850-common` | trim 6 vendor-only **Pixelworks** libs from `extract-files.py` `lib_fixup_vendor_suffix` | Pixelworks = the display/**iris** hardware, unrelated to camera; inherited from the upstream sm8550/sm8650 device-tree conversion |
-| 0004 | `vendor/oneplus/sm8850-common` | rewrite the dangling `<lib>_vendor` Pixelworks deps to bare names in the generated `Android.bp` | output side of 0003 — same display/iris, same non-camera attribution |
+```sh
+set -eu
+PATCHES_ROOT="$(cd /path/to/patches && pwd)"
+repo start lineage-legacy-build-fixes system/core frameworks/av device/oneplus/sm8850-common vendor/oneplus/sm8850-common
 
-## Not a patch — a restore (sync artifact)
+git -C system/core apply --check \
+  "$PATCHES_ROOT/los-fix-build-patches/0001-system_core-camera.h-add-CAMERA_FRAME_DATA_FD.patch"
+git -C frameworks/av apply --check \
+  "$PATCHES_ROOT/los-fix-build-patches/0002-frameworks_av-ACodec-drop-incomplete-AC4Tbl.patch"
+git -C device/oneplus/sm8850-common apply --check \
+  "$PATCHES_ROOT/los-fix-build-patches/0003-device_sm8850-common-extract-files-trim-pixelworks-vendor-suffix.patch"
+git -C vendor/oneplus/sm8850-common apply --check \
+  "$PATCHES_ROOT/los-fix-build-patches/0004-vendor_sm8850-common-Android.bp-bare-pixelworks-deps.patch"
 
-`prebuilts/misc/protobuf_vendorcompat/`: `repo sync --force-sync` can drop its 11 tracked files
-(LICENSE + the `arm/`,`arm64/` `libprotobuf-cpp-*-vendorcompat.so`). It's not a diff — just restore them:
+git -C system/core apply \
+  "$PATCHES_ROOT/los-fix-build-patches/0001-system_core-camera.h-add-CAMERA_FRAME_DATA_FD.patch"
+git -C frameworks/av apply \
+  "$PATCHES_ROOT/los-fix-build-patches/0002-frameworks_av-ACodec-drop-incomplete-AC4Tbl.patch"
+git -C device/oneplus/sm8850-common apply \
+  "$PATCHES_ROOT/los-fix-build-patches/0003-device_sm8850-common-extract-files-trim-pixelworks-vendor-suffix.patch"
+git -C vendor/oneplus/sm8850-common apply \
+  "$PATCHES_ROOT/los-fix-build-patches/0004-vendor_sm8850-common-Android.bp-bare-pixelworks-deps.patch"
 ```
-git -C prebuilts/misc checkout -- protobuf_vendorcompat/
-```
 
-## Apply (overlay, after a clean repo sync)
+The four checks are a fail-fast gate, but this retired manual lane is not a
+cross-repository transaction. Use only disposable topic branches. If an apply
+fails unexpectedly, stop and inspect or recreate those branches before trying
+again; do not continue with a partially applied set.
 
-```
-git -C system/core                  apply los-fix-build-patches/0001-*.patch
-git -C frameworks/av                apply los-fix-build-patches/0002-*.patch
-git -C device/oneplus/sm8850-common apply los-fix-build-patches/0003-*.patch
-git -C vendor/oneplus/sm8850-common apply los-fix-build-patches/0004-*.patch
-```
-0003 edits `extract-files.py`; re-run that repo's extract to regenerate `Android.bp` consistently
-(0004 is that regenerated output, so applying both also works). These are needed only if you reproduce
-our exact branch composition (A16 `frameworks/av` + LineageOS base). Full triage + rationale: the
-`infiniti-camera-port` build notes (`BUILD-ISSUES-v3.0.md`).
+Patch 0003 changes `extract-files.py`; regenerate the proprietary output instead
+of treating 0004 as long-term source truth. Any old
+`prebuilts/misc/protobuf_vendorcompat` restore was a sync repair, not a fifth
+patch, and is outside this repository.
