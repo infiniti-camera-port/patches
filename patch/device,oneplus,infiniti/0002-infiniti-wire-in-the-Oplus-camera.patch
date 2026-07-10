@@ -1,0 +1,185 @@
+From 7f9465468ab95811aedeba7ef73859318c187cb0 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Wed, 8 Jul 2026 15:01:36 -0600
+Subject: [PATCH 2/3] infiniti: wire in the Oplus camera
+
+Sources: 947f88d006feededbccbd72b237dfb5450d7a086, f00a88a4fdc0e4418609d459c67cfa3572cb4f23, cf9b1df1023499d1296278077a6872877669e8e0
+
+Resolved to the v3 graph: device.mk inherits vendor/oneplus/camera-infiniti/camera-infiniti.mk and BoardConfig allows the OEM camera vendor-property namespace; extract-files.py drops the waffle-era CameraHW face-detect-disable rewrite so Oplus camera keeps the donor TRUE/TRUE face-detection flags; proprietary-file rows otherwise stay in the v3 graph.
+
+Change-Id: I7aa5d70aa02ad0c287c41f34236c0599db954137
+---
+ device.mk             |  3 ++
+ extract-files.py      |  4 ---
+ proprietary-files.txt | 65 -------------------------------------------
+ 3 files changed, 3 insertions(+), 69 deletions(-)
+
+diff --git a/device.mk b/device.mk
+index b8b8ae8..559fbd9 100644
+--- a/device.mk
++++ b/device.mk
+@@ -86,3 +86,6 @@ $(call inherit-product, device/oneplus/sm8850-common/common.mk)
+ 
+ # Inherit from the proprietary files makefile.
+ $(call inherit-product, vendor/oneplus/infiniti/infiniti-vendor.mk)
++
++# Camera (Oplus camera port)
++$(call inherit-product, vendor/oneplus/camera-infiniti/camera-infiniti.mk)
+diff --git a/extract-files.py b/extract-files.py
+index 441d9b6..edca928 100755
+--- a/extract-files.py
++++ b/extract-files.py
+@@ -37,10 +37,6 @@ lib_fixups: lib_fixups_user_type = {
+ }
+ 
+ blob_fixups: blob_fixups_user_type = {
+-    'odm/etc/camera/CameraHWConfiguration.config': blob_fixup()
+-        # Disable face detection AE behaviour
+-        .regex_replace(r'(enableSWfdForThirdCamUnit += )TRUE', r'\1FALSE')
+-        .regex_replace(r'(fdSupport += )TRUE;', r'\1FALSE;'),
+     'odm/etc/init/init.camera_process.rc': blob_fixup()
+         .regex_replace('    delete_recursion', '    #delete_recursion'),
+     (
+diff --git a/proprietary-files.txt b/proprietary-files.txt
+index 46829c9..f1e7891 100644
+--- a/proprietary-files.txt
++++ b/proprietary-files.txt
+@@ -217,41 +217,11 @@ odm/etc/camera/basictone/vig/VigTab_Main
+ odm/etc/camera/basictone/vig/VigTab_Tele
+ odm/etc/camera/basictone/vig/VigTab_UTele
+ odm/etc/camera/basictone/vig/VigTab_Wide
+-odm/etc/camera/cfr_bin/CFR_OPlus_EF017_UW_snapshot.bin
+-odm/etc/camera/cfr_bin/CFR_infinitimain.bin
+-odm/etc/camera/cfr_bin/CFR_infinititele.bin
+-odm/etc/camera/cfr_bin/CFR_infinitiultrawide.bin
+-odm/etc/camera/config/camera_third_party_feature_config.protobuf
+-odm/etc/camera/config/camera_unit_config
+-odm/etc/camera/config/camera_unit_feature_config.protobuf
+-odm/etc/camera/config/infinitifront
+-odm/etc/camera/config/infinitimain
+-odm/etc/camera/config/infinititele
+-odm/etc/camera/config/infinitiultrawide
+-odm/etc/camera/config/oplus_camera_algo_switch_config
+ odm/etc/camera/config/oplus_camera_algo_traversal_config.json
+-odm/etc/camera/config/oplus_camera_aps_config
+-odm/etc/camera/config/oplus_camera_config
+-odm/etc/camera/config/oplus_camera_preview_decision_config.json
+ odm/etc/camera/config/oplus_preview_decision_params.json
+ odm/etc/camera/config/quick_visibility_white_list
+ odm/etc/camera/config/video_ai_proc_cfg.json
+ odm/etc/camera/config/video_beauty_default_config
+-odm/etc/camera/dng/ColorMatrix1_infinitimain.txt
+-odm/etc/camera/dng/ColorMatrix1_infinititele.txt
+-odm/etc/camera/dng/ColorMatrix1_infinitiultrawide.txt
+-odm/etc/camera/dng/ColorMatrix2_infinitimain.txt
+-odm/etc/camera/dng/ColorMatrix2_infinititele.txt
+-odm/etc/camera/dng/ColorMatrix2_infinitiultrawide.txt
+-odm/etc/camera/dng/D28HUESATMap_infinitimain.txt
+-odm/etc/camera/dng/D28HUESATMap_infinititele.txt
+-odm/etc/camera/dng/D28HUESATMap_infinitiultrawide.txt
+-odm/etc/camera/dng/D65HUESATMap_infinitimain.txt
+-odm/etc/camera/dng/D65HUESATMap_infinititele.txt
+-odm/etc/camera/dng/D65HUESATMap_infinitiultrawide.txt
+-odm/etc/camera/dng/ToneCurve_infinitimain.txt
+-odm/etc/camera/dng/ToneCurve_infinititele.txt
+-odm/etc/camera/dng/ToneCurve_infinitiultrawide.txt
+ odm/etc/camera/facerestore/fr_models/BDET.bin
+ odm/etc/camera/facerestore/fr_models/DB.bin
+ odm/etc/camera/facerestore/fr_models/FS.bin
+@@ -272,7 +242,6 @@ odm/etc/camera/facerestore/fr_models/RT_A.bin
+ odm/etc/camera/facerestore/fr_models/RT_B.bin
+ odm/etc/camera/facerestore/fr_models/RT_C.bin
+ odm/etc/camera/facerestore/fr_models/RT_D.bin
+-odm/etc/camera/facerestore/InitParams.json
+ odm/etc/camera/fb_model/000.png
+ odm/etc/camera/fb_model/000_pre.bin
+ odm/etc/camera/fb_model/000_pre.png
+@@ -773,17 +742,14 @@ odm/etc/camera/Vega_Track_HumanBody_Gray.model
+ odm/etc/camera/aiboost_qnn_htp2.7.2_16382673562495086299.bin
+ odm/etc/camera/aiboost_qnn_htp2.7.2_828413902960689361.bin
+ odm/etc/camera/anc_cl_kernel.cache
+-odm/etc/camera/camera_engmode.xml
+ odm/etc/camera/capture_bokeh_params.json
+ odm/etc/camera/capture_lutportrait_params.json
+ odm/etc/camera/capture_neonportrait_params.json
+ odm/etc/camera/conf_tuning_params.json
+ odm/etc/camera/distortionParams.bin
+ odm/etc/camera/dolby_vainr_cfg.json
+-odm/etc/camera/eis_camera.vcfg
+ odm/etc/camera/fb_default
+ odm/etc/camera/fb_original
+-odm/etc/camera/fwk_config.json
+ odm/etc/camera/gamma_masterMode_quick_hdr_conf.json
+ odm/etc/camera/gamma_masterMode_quick_sdr_conf.json
+ odm/etc/camera/gamma_photo_hdr_conf.json
+@@ -797,14 +763,12 @@ odm/etc/camera/gamma_video_sdr_conf.json
+ odm/etc/camera/gm_tcs3449_golden
+ odm/etc/camera/main_inv_mapxy_33x25.bin
+ odm/etc/camera/main_mapxy_33x25.bin
+-odm/etc/camera/media_profiles.xml
+ odm/etc/camera/model_fdc.data
+ odm/etc/camera/mtStereoParams.bin
+ odm/etc/camera/mtStereoParams_far.bin
+ odm/etc/camera/mvg_sat_config.json
+ odm/etc/camera/mwStereoParams.bin
+ odm/etc/camera/neon_yuv_LUT_64.bin
+-odm/etc/camera/oplus_eis_camera.vcfg
+ odm/etc/camera/qnn_binary_9052758122668408981.bin
+ odm/etc/camera/salient2_seg.bin
+ odm/etc/camera/self_ois.ocfg
+@@ -816,7 +780,6 @@ odm/etc/camera/tele_inv_mapxy_33x25.bin
+ odm/etc/camera/tele_mapxy_33x25.bin
+ odm/etc/camera/text_enhance_yuv_v1.tflite
+ odm/etc/camera/v10_vamm_sig_norm_0408_8143-SIM-fp16-8850.bin
+-odm/etc/camera/vainr_cfg.json
+ odm/etc/camera/video_MLFT_Post_Main.json
+ odm/etc/camera/video_MLFT_Post_Tele.json
+ odm/etc/camera/video_MLFT_Post_Ultra_Tele.json
+@@ -824,7 +787,6 @@ odm/etc/camera/video_MLFT_Post_Wide.json
+ odm/etc/camera/wide_inv_padding_mapxy_33x25.bin
+ odm/etc/camera/wide_padding_mapxy_33x25.bin
+ odm/etc/init/init.camera_debug_ui.rc
+-odm/etc/init/init.camera_process.rc
+ odm/etc/init/init.camera_upate.rc
+ odm/etc/init/vendor.oplus.hardware.cammidasservice-V1-service.rc
+ odm/etc/vintf/manifest/manifest_oplus_camera_rfi.xml
+@@ -845,39 +807,12 @@ odm/lib64/camera/components/com.oplus.stats.awb.so
+ odm/lib64/camera/components/com.oplus.stats.pdlib.so
+ odm/lib64/camera/components/libcamxoemsatsoftwarefusionwrapper.so
+ odm/lib64/camera/components/libcamxoemsatwrapper.so
+-odm/lib64/camera/AIAWB_q.odnn
+ odm/lib64/camera/awb_parameter_default.bin
+-odm/lib64/camera/awb_parameter_infinitifront.bin
+-odm/lib64/camera/awb_parameter_infinitimain.bin
+-odm/lib64/camera/awb_parameter_infinititele.bin
+-odm/lib64/camera/awb_parameter_infinitiultrawide.bin
+ odm/lib64/camera/com.qti.sensor.infinitifront.so
+ odm/lib64/camera/com.qti.sensor.infinitimain.so
+ odm/lib64/camera/com.qti.sensor.infinititele.so
+ odm/lib64/camera/com.qti.sensor.infinitiultrawide.so
+-odm/lib64/camera/com.qti.sensormodule.infinitifront.bin
+-odm/lib64/camera/com.qti.sensormodule.infinitimain.bin
+-odm/lib64/camera/com.qti.sensormodule.infinititele.bin
+-odm/lib64/camera/com.qti.sensormodule.infinititele2.bin
+-odm/lib64/camera/com.qti.sensormodule.infinitiultrawide.bin
+ odm/lib64/camera/com.qti.tuned.default.canoe.bin
+-odm/lib64/camera/com.qti.tuned.inffront.bin
+-odm/lib64/camera/com.qti.tuned.infmain.bin
+-odm/lib64/camera/com.qti.tuned.inftele.bin
+-odm/lib64/camera/com.qti.tuned.infultrawide.bin
+-odm/lib64/camera/libaecCustomParam_Cam0.bin
+-odm/lib64/camera/libaecCustomParam_Cam1.bin
+-odm/lib64/camera/libaecCustomParam_Cam2.bin
+-odm/lib64/camera/libaecCustomParam_Cam3.bin
+-odm/lib64/camera/libafCustomParam_Cam0.bin
+-odm/lib64/camera/libafCustomParam_Cam1.bin
+-odm/lib64/camera/libafCustomParam_Cam2.bin
+-odm/lib64/camera/libafCustomParam_Cam3.bin
+-odm/lib64/camera/libafCustomParam_Cam4.bin
+-odm/lib64/camera/libpdCustomParam_Cam0.bin
+-odm/lib64/camera/libpdCustomParam_Cam1.bin
+-odm/lib64/camera/libpdCustomParam_Cam2.bin
+-odm/lib64/camera/libpdCustomParam_Cam3.bin
+ odm/lib64/camera/revision.txt
+ odm/lib64/bm6a81v04s14n02.bin
+ odm/lib64/bm6a81v04s14n05.bin

@@ -1,0 +1,187 @@
+From 83d599f08df598770926afcccfd860f979418678 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Mon, 6 Jul 2026 08:04:25 +0000
+Subject: [PATCH] Sandbox: add exported vault import vector + Vault-tab
+ deep-link
+
+Expose an import path into the encrypted vault for trusted callers:
+- VaultFileProvider.call() gains importFile (routes to
+  FileVaultManager.importFile) and isConfigured, caller-gated to
+  system/shell/root/self and the com.oplus.encryption SafeBox shim.
+- MainActivity reads a new intent extra
+  (com.android.axion.sandbox.extra.OPEN_TAB) to open straight on a tab,
+  so callers can deep-link to the Vault tab.
+
+Lets the OnePlus gallery's "Move to Private Safe" import media into the
+Sandbox vault and open it on the Vault tab.
+---
+ src/com/android/axion/sandbox/MainActivity.kt | 32 ++++++++++++++-
+ .../axion/sandbox/io/VaultFileProvider.kt     | 41 +++++++++++++++++++
+ .../android/axion/sandbox/ui/SandboxApp.kt    |  6 +++
+ 3 files changed, 78 insertions(+), 1 deletion(-)
+
+diff --git a/src/com/android/axion/sandbox/MainActivity.kt b/src/com/android/axion/sandbox/MainActivity.kt
+index 633a798..11fb72f 100644
+--- a/src/com/android/axion/sandbox/MainActivity.kt
++++ b/src/com/android/axion/sandbox/MainActivity.kt
+@@ -15,6 +15,7 @@
+  */
+ package com.android.axion.sandbox
+ 
++import android.content.Intent
+ import android.hardware.biometrics.BiometricManager
+ import android.hardware.biometrics.BiometricPrompt
+ import android.os.Bundle
+@@ -61,8 +62,13 @@ import com.android.axion.sandbox.ui.SettingsScreen
+ import com.android.axion.sandbox.ui.theme.SandboxTheme
+ import kotlinx.coroutines.launch
+ 
++private const val EXTRA_OPEN_TAB = "com.android.axion.sandbox.extra.OPEN_TAB"
++
+ class MainActivity : ComponentActivity() {
+ 
++    private val requestedTab = mutableStateOf(0)
++    private val tabRequestNonce = mutableStateOf(0)
++
+     private lateinit var securityManager: SandboxSecurityManager
+     private lateinit var backupManager: BackupManager
+ 
+@@ -100,6 +106,8 @@ class MainActivity : ComponentActivity() {
+         super.onCreate(savedInstanceState)
+         enableEdgeToEdge()
+ 
++        applyTabIntent(intent)
++
+         securityManager = SandboxSecurityManager(this)
+         backupManager = BackupManager(this)
+         VaultAccessController.lock(this)
+@@ -112,6 +120,8 @@ class MainActivity : ComponentActivity() {
+                 ) {
+                     SandboxNavigation(
+                         securityManager = securityManager,
++                        requestedTab = requestedTab.value,
++                        tabRequestNonce = tabRequestNonce.value,
+                         onShowBiometricPrompt = { onSuccess ->
+                             showBiometricPrompt(onSuccess)
+                         },
+@@ -127,6 +137,20 @@ class MainActivity : ComponentActivity() {
+         }
+     }
+ 
++    override fun onNewIntent(intent: Intent) {
++        super.onNewIntent(intent)
++        setIntent(intent)
++        applyTabIntent(intent)
++    }
++
++    private fun applyTabIntent(intent: Intent?) {
++        val tab = intent?.getIntExtra(EXTRA_OPEN_TAB, -1) ?: -1
++        if (tab in 0..2) {
++            requestedTab.value = tab
++            tabRequestNonce.value += 1
++        }
++    }
++
+     private fun showBiometricPrompt(onSuccess: () -> Unit) {
+         val prompt = BiometricPrompt.Builder(this)
+             .setTitle(getString(R.string.biometric_title))
+@@ -166,6 +190,8 @@ enum class SandboxScreen {
+ @Composable
+ fun SandboxNavigation(
+     securityManager: SandboxSecurityManager,
++    requestedTab: Int = 0,
++    tabRequestNonce: Int = 0,
+     onShowBiometricPrompt: (() -> Unit) -> Unit,
+     onBackupAppList: () -> Unit,
+     onRestoreAppList: () -> Unit
+@@ -184,7 +210,11 @@ fun SandboxNavigation(
+ 
+     var isPrivateUnlocked by rememberSaveable { mutableStateOf(false) }
+     var isPrivateAreaExpanded by rememberSaveable { mutableStateOf(false) }
+-    var selectedTabIndex by rememberSaveable { mutableStateOf(0) }
++    var selectedTabIndex by rememberSaveable { mutableStateOf(requestedTab) }
++
++    LaunchedEffect(tabRequestNonce) {
++        if (tabRequestNonce > 0) selectedTabIndex = requestedTab
++    }
+     var isPickingFiles by rememberSaveable { mutableStateOf(false) }
+     var lastPauseTime by rememberSaveable { mutableStateOf(0L) }
+ 
+diff --git a/src/com/android/axion/sandbox/io/VaultFileProvider.kt b/src/com/android/axion/sandbox/io/VaultFileProvider.kt
+index 77b72c4..70969c9 100644
+--- a/src/com/android/axion/sandbox/io/VaultFileProvider.kt
++++ b/src/com/android/axion/sandbox/io/VaultFileProvider.kt
+@@ -26,6 +26,7 @@ import android.net.Uri
+ import android.os.Binder
+ import android.os.Bundle
+ import android.os.ParcelFileDescriptor
++import android.os.Process
+ import android.provider.BaseColumns
+ import android.provider.MediaStore
+ import android.provider.OpenableColumns
+@@ -203,8 +204,48 @@ class VaultFileProvider : ContentProvider() {
+         return type
+     }
+ 
++    override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
++        val context = context ?: return null
++        val callerUid = Binder.getCallingUid()
++        val callerPkg = try { callingPackage } catch (e: SecurityException) { null }
++        val allowed = callerUid == Process.SYSTEM_UID ||
++            callerUid == Process.myUid() ||
++            callerUid == Process.SHELL_UID ||
++            callerUid == Process.ROOT_UID ||
++            callerPkg == SAFEBOX_SHIM_PKG
++        if (!allowed) {
++            Log.w(TAG, "call denied method=$method caller=${caller()}")
++            return null
++        }
++        return when (method) {
++            METHOD_IS_CONFIGURED -> Bundle().apply { putBoolean(KEY_RESULT, true) }
++            METHOD_IMPORT_FILE -> {
++                val uriStr = arg ?: extras?.getString(KEY_URI)
++                if (uriStr.isNullOrEmpty()) {
++                    Log.w(TAG, "importFile empty uri caller=${caller()}")
++                    Bundle().apply { putBoolean(KEY_RESULT, false) }
++                } else {
++                    val ok = try {
++                        FileVaultManager(context).importFile(Uri.parse(uriStr))
++                    } catch (e: Exception) {
++                        Log.w(TAG, "importFile failed uri=$uriStr caller=${caller()}", e)
++                        false
++                    }
++                    Log.i(TAG, "importFile caller=${caller()} uri=$uriStr ok=$ok")
++                    Bundle().apply { putBoolean(KEY_RESULT, ok) }
++                }
++            }
++            else -> null
++        }
++    }
++
+     private companion object {
+         private const val TAG = "VaultFileProvider"
++        private const val SAFEBOX_SHIM_PKG = "com.oplus.encryption"
++        private const val METHOD_IMPORT_FILE = "importFile"
++        private const val METHOD_IS_CONFIGURED = "isConfigured"
++        private const val KEY_URI = "uri"
++        private const val KEY_RESULT = "result"
+     }
+ 
+     override fun insert(uri: Uri, values: ContentValues?): Uri? = null
+diff --git a/src/com/android/axion/sandbox/ui/SandboxApp.kt b/src/com/android/axion/sandbox/ui/SandboxApp.kt
+index 8f6b54d..f5bf33c 100644
+--- a/src/com/android/axion/sandbox/ui/SandboxApp.kt
++++ b/src/com/android/axion/sandbox/ui/SandboxApp.kt
+@@ -214,6 +214,12 @@ fun SandboxApp(
+         onTabIndexChange(pagerState.currentPage)
+     }
+ 
++    LaunchedEffect(selectedTabIndex) {
++        if (pagerState.currentPage != selectedTabIndex) {
++            pagerState.animateScrollToPage(selectedTabIndex)
++        }
++    }
++
+     val reloadApps: () -> Unit = {
+         refreshKey++
+         selectedApp?.let { selected ->

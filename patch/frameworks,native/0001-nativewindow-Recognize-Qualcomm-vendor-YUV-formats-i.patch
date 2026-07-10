@@ -1,0 +1,62 @@
+From 969f3fa00729cacdd127b6aa25267f7e192feabe Mon Sep 17 00:00:00 2001
+From: realahnet <syedmusicrealise@gmail.com>
+Date: Tue, 23 Jun 2026 20:13:58 +0000
+Subject: [PATCH 1/2] nativewindow: Recognize Qualcomm vendor YUV formats in
+ formatIsYuv
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The source-built Qualcomm gralloc resolves camera buffers to vendor-specific
+YUV formats (e.g. YCbCr_420_SP_VENUS = 0x7FA30C04), but AOSP's
+AHardwareBuffer_formatIsYuv() only recognized standard format values. This
+caused AHardwareBuffer_lockPlanes() to return a single plane instead of three,
+leaving planes[1] (chroma) and planes[2] (Cr) uninitialized.
+
+Camera post-processing computes buffer height from the difference between
+plane pointers divided by stride. With planes[1] uninitialized, this produces
+garbage values that break P010 conversion, HDR tone mapping, and JPEG encoding
+— resulting in green and distorted photos.
+
+Add Qualcomm vendor YUV format constants to the switch so these buffers take
+the multi-plane YUV lock path, which reads correct plane layout metadata
+already provided by the gralloc.
+
+GLM 5.2 was used in debugging of this issue.
+
+Change-Id: I0fee9cb533f5ab3496f43c4d4e9a34c3dbc7daed
+(cherry picked from commit 1903a439d9c58740b0271766ca1ee032699bf0b0)
+(cherry picked from commit caab93b6250e35e96aef12537c1f25b1662cb729)
+---
+ libs/nativewindow/AHardwareBuffer.cpp | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/libs/nativewindow/AHardwareBuffer.cpp b/libs/nativewindow/AHardwareBuffer.cpp
+index a03b3a1ec0..8774b2262e 100644
+--- a/libs/nativewindow/AHardwareBuffer.cpp
++++ b/libs/nativewindow/AHardwareBuffer.cpp
+@@ -762,6 +762,24 @@ bool AHardwareBuffer_formatIsYuv(uint32_t format) {
+         case AHARDWAREBUFFER_FORMAT_YCbCr_P010:
+         case AHARDWAREBUFFER_FORMAT_YCbCr_P210:
+             return true;
++        // Qualcomm vendor YUV formats — the source-built gralloc resolves camera
++        // buffers to these. Without recognizing them as YUV, AHardwareBuffer_lockPlanes
++        // returns only 1 plane (base pointer), leaving planes[1]/[2] uninitialized.
++        // This causes camera post-processing (ArcSoft APS) to compute garbage buffer
++        // dimensions from the stale planes[1] pointer, producing green/distorted photos.
++        case 0x7FA30C00: // HAL_PIXEL_FORMAT_NV21_ENCODEABLE
++        case 0x7FA30C01: // HAL_PIXEL_FORMAT_YCrCb_420_SP_ADRENO
++        case 0x7FA30C03: // HAL_PIXEL_FORMAT_YCbCr_420_SP_TILED
++        case 0x7FA30C04: // HAL_PIXEL_FORMAT_YCbCr_420_SP_VENUS
++        case 0x7FA30C06: // HAL_PIXEL_FORMAT_YCbCr_420_SP_VENUS_UBWC
++        case 0x7FA30C07: // HAL_PIXEL_FORMAT_YCbCr_420_SP_4R_UBWC
++        case 0x7FA30C09: // HAL_PIXEL_FORMAT_YCbCr_420_TP10_UBWC
++        case 0x7FA30C0A: // HAL_PIXEL_FORMAT_YCbCr_420_P010_VENUS
++        case 0x113:      // HAL_PIXEL_FORMAT_NV21_ZSL
++        case 0x114:      // HAL_PIXEL_FORMAT_YCrCb_420_SP_VENUS
++        case 0x116:      // HAL_PIXEL_FORMAT_NV12_HEIF
++        case 0x124:      // HAL_PIXEL_FORMAT_YCbCr_420_P010_UBWC
++            return true;
+         default:
+             return false;
+     }

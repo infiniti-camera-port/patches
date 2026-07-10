@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "profile": "infiniti-crdroid-16.0",
+  "sync_only_prerequisites": [
+    {
+      "repo": "infiniti-camera-port/vendor_oneplus_camera-sm8850-common",
+      "build_path": "vendor/oneplus/camera-sm8850-common",
+      "ref": "16.0-infiniti",
+      "sha": "ee141662ce8baccf31e69a4f9e5436cb16ded3e2"
+    },
+    {
+      "repo": "infiniti-camera-port/vendor_oneplus_camera-infiniti",
+      "build_path": "vendor/oneplus/camera-infiniti",
+      "ref": "16.0",
+      "sha": "51cb97c2f11c4fd718bcaa5c6c6992cc3625cab4"
+    },
+    {
+      "repo": "infiniti-camera-port/proprietary_vendor_oneplus_camera-sm8850-common",
+      "build_path": "proprietary/vendor/oneplus/camera-sm8850-common",
+      "ref": "16.0-infiniti",
+      "sha": "7b6375ecb47d70657b8acfccc9dd7d3390ec80f5"
+    },
+    {
+      "repo": "infiniti-camera-port/proprietary_vendor_oneplus_camera-infiniti",
+      "build_path": "proprietary/vendor/oneplus/camera-infiniti",
+      "ref": "16.0",
+      "sha": "484b54c3113de412b4ba385734401217fc0714af"
+    },
+    {
+      "repo": "infiniti-camera-port/proprietary_vendor_oneplus_sm8850-common",
+      "build_path": "vendor/oneplus/sm8850-common",
+      "ref": "16.0-infiniti",
+      "sha": "9a87ebee9c2eda1379f75f4710bf87ed078d4fbf"
+    },
+    {
+      "repo": "infiniti-camera-port/proprietary_vendor_oneplus_infiniti",
+      "build_path": "vendor/oneplus/infiniti",
+      "ref": "16.0",
+      "sha": "f3b56122d8b362c8a5fcce2b2ecb2a517c6c11b6"
+    }
+  ],
+  "series": [
+    {
+      "id": "hardware-oplus",
+      "directory": "hardware,oplus",
+      "target_repo": "hardware/oplus",
+      "source_repo": "infiniti-camera-port/android_hardware_oplus",
+      "base_sha": "bd0e44d0d70e4f06a25c3945f22f305cb39b0744",
+      "head_sha": "589443105a203e89c7c903c8c8dd53819f4da6f4",
+      "head_tree_sha": "05adf3ce1f5c4697af556876e98bcf64296aa651",
+      "count": 17,
+      "apply_order": 1
+    },
+    {
+      "id": "frameworks-base",
+      "directory": "frameworks,base",
+      "target_repo": "frameworks/base",
+      "source_repo": "infiniti-camera-port/android_frameworks_base",
+      "base_sha": "309246027e51d3c8d9d13df1c0674fcec29c4df1",
+      "head_sha": "d40fc4e3d01a3df11269f8bf6542ed11bcb2aa0a",
+      "head_tree_sha": "e74fba37ae045dfe5caeee15232e03883cb19012",
+      "count": 2,
+      "apply_order": 2
+    },
+    {
+      "id": "frameworks-native",
+      "directory": "frameworks,native",
+      "target_repo": "frameworks/native",
+      "source_repo": "infiniti-camera-port/android_frameworks_native",
+      "base_sha": "da1214c0a2625e98782acec189033c2974614fe4",
+      "head_sha": "7be206716850a2d1bcae64db3237e7accbf25a07",
+      "head_tree_sha": "b9191a5b03faa07538b0d9a19a337e6bec5a9877",
+      "count": 2,
+      "apply_order": 3
+    },
+    {
+      "id": "frameworks-av",
+      "directory": "frameworks,av",
+      "target_repo": "frameworks/av",
+      "source_repo": "infiniti-camera-port/android_frameworks_av",
+      "base_sha": "2598b568888069f73551f4502181eccb21066215",
+      "head_sha": "1b315c32a2fd3259d0031f87bcb8e9b34492e800",
+      "head_tree_sha": "0596037107000deed57cc774918e669bcf728c50",
+      "count": 6,
+      "apply_order": 4
+    },
+    {
+      "id": "device-qcom-sepolicy-vndr-sm8850",
+      "directory": "device,qcom,sepolicy_vndr,sm8850",
+      "target_repo": "device/qcom/sepolicy_vndr/sm8850",
+      "source_repo": "infiniti-camera-port/android_device_qcom_sepolicy_vndr",
+      "base_sha": "cad392c077ec072059805bac1b1725ad5175790a",
+      "head_sha": "35d4832726f481f1e19bef1279d99bd664f691d9",
+      "head_tree_sha": "8de846939a5e8484a148b67aaac6b3bea8147358",
+      "count": 3,
+      "apply_order": 5
+    },
+    {
+      "id": "packages-apps-sandbox",
+      "directory": "packages,apps,Sandbox",
+      "target_repo": "packages/apps/Sandbox",
+      "source_repo": "infiniti-camera-port/android_packages_apps_Sandbox",
+      "base_sha": "067327711ce3a1519edb9b263d3f7dc09e2da6e7",
+      "head_sha": "83d599f08df598770926afcccfd860f979418678",
+      "head_tree_sha": "8965122e5ff8d79bb6aa59e4c68ac3c458404435",
+      "count": 1,
+      "apply_order": 6
+    },
+    {
+      "id": "device-oneplus-sm8850-common",
+      "directory": "device,oneplus,sm8850-common",
+      "target_repo": "device/oneplus/sm8850-common",
+      "source_repo": "infiniti-camera-port/android_device_oneplus_sm8850-common",
+      "base_sha": "9e819cc0437c4230f27888b1e5f65eea648185e3",
+      "head_sha": "294ecb140a690fef21e0f27ba34311d0a162fbcd",
+      "head_tree_sha": "16d926c3c1ae15817ff36e24e126521a3373e657",
+      "count": 6,
+      "apply_order": 7
+    },
+    {
+      "id": "device-oneplus-infiniti",
+      "directory": "device,oneplus,infiniti",
+      "target_repo": "device/oneplus/infiniti",
+      "source_repo": "infiniti-camera-port/android_device_oneplus_infiniti",
+      "base_sha": "8146137c55de8c1f08de9602a6ff26d2bd7124bc",
+      "head_sha": "c9d641be0f0bde2b72092e56cca969dd98d299e1",
+      "head_tree_sha": "3b6b30a6869cb2a3e0ad0f4873018e3ecb63cead",
+      "count": 3,
+      "apply_order": 8
+    }
+  ]
+}

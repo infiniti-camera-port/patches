@@ -1,0 +1,28 @@
+From 589443105a203e89c7c903c8c8dd53819f4da6f4 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 7 Jul 2026 16:01:45 -0600
+Subject: [PATCH 17/17] oplus-fwk: reproduce OEM isEncryptPass semantics for
+ the locked-album gate
+
+---
+ .../com/oplus/server/OplusAccessControlManagerService.java | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/oplus-fwk/src/com/oplus/server/OplusAccessControlManagerService.java b/oplus-fwk/src/com/oplus/server/OplusAccessControlManagerService.java
+index 74e921f5..cef9a573 100644
+--- a/oplus-fwk/src/com/oplus/server/OplusAccessControlManagerService.java
++++ b/oplus-fwk/src/com/oplus/server/OplusAccessControlManagerService.java
+@@ -102,7 +102,12 @@ public final class OplusAccessControlManagerService extends IOplusAccessControlM
+         if (packageName == null) {
+             return false;
+         }
+-        return mStateStore.isEncryptPass(packageName, userId);
++        // Auth is trivially "passed" when the package is not in the encrypt set
++        // (nothing gated); gate for real only when the package IS encrypt-gated.
++        // Reproduces the device-validated both-true behavior for the nothing-locked
++        // state while preserving real gating once a package is added to the encrypt set.
++        return !isEncryptedPackage(packageName, userId)
++                || mStateStore.isEncryptPass(packageName, userId);
+     }
+ 
+     @Override

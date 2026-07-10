@@ -1,0 +1,34 @@
+From 5e904f23c5b2499ec8a4abc2daa897960aaa6c27 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 7 Jul 2026 15:58:50 -0600
+Subject: [PATCH 07/17] oplus-fwk: Osense background-running ABI stubs
+
+Co-authored-by: Hecheng Yu <kde-yyds@qq.com>
+---
+ oplus-fwk/src/com/oplus/osense/OsenseResEventClient.java | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/oplus-fwk/src/com/oplus/osense/OsenseResEventClient.java b/oplus-fwk/src/com/oplus/osense/OsenseResEventClient.java
+index e87b5e3b..e59c008f 100644
+--- a/oplus-fwk/src/com/oplus/osense/OsenseResEventClient.java
++++ b/oplus-fwk/src/com/oplus/osense/OsenseResEventClient.java
+@@ -25,6 +25,10 @@ public class OsenseResEventClient {
+         return 0;
+     }
+ 
++    public int unregisterEventCallback(OsenseEventCallback callback) {
++        return 0;
++    }
++
+     public void requestSceneAction(Bundle bundle) {
+         return;
+     }
+@@ -39,4 +43,8 @@ public class OsenseResEventClient {
+     public boolean stopBackgroundRunning(Context context, int type) {
+         return false;
+     }
++
++    public void startBackgroundRunning(Context context, int bgMode, OsenseEventCallback callback) {
++        return;
++    }
+ }

@@ -1,0 +1,260 @@
+From 40f868a98bf07e21fcca713872a12c84e45a92c6 Mon Sep 17 00:00:00 2001
+From: chandu078 <chandudyavanapelli03@gmail.com>
+Date: Thu, 9 Apr 2026 04:40:15 +0000
+Subject: [PATCH 05/17] sepolicy: qti: Bring up support for infiniti/fairlady
+ (OnePlus 15/15T)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Change-Id: I7f87488b7f2bbfcd6dbf99d07ee22d7aedab5d03
+(cherry picked from commit a9d83307ab5e3ef28f26a6c13b85c078d30f7a05)
+
+Ledger: hardware_oplus.md Accepted Group A row 2 (f1b66a12) — replayed as the upstream a9d83307 variant per the ledger recommendation (ours + the /dev/ufcs_dev wlchg_device label) to converge with oneplus-sm8850-development
+Change-Id: I1fbd2c722e5c67abdd02001a81bd89b7e8a19098
+(cherry picked from commit 4ea756161d89b9422d36a6d7e8552ec7fd9238bb)
+---
+ sepolicy/qti/private/property_contexts       |  5 ++++
+ sepolicy/qti/vendor/file.te                  |  3 ++
+ sepolicy/qti/vendor/file_contexts            | 29 ++++++++++++--------
+ sepolicy/qti/vendor/genfs_contexts           | 19 +++++++++++++
+ sepolicy/qti/vendor/hal_audio_default.te     |  2 ++
+ sepolicy/qti/vendor/hal_oplus_touch_aidl.te  | 13 +++++++++
+ sepolicy/qti/vendor/oplus_touchdaemon.te     |  1 +
+ sepolicy/qti/vendor/vendor_qti_init_shell.te |  1 +
+ 8 files changed, 61 insertions(+), 12 deletions(-)
+
+diff --git a/sepolicy/qti/private/property_contexts b/sepolicy/qti/private/property_contexts
+index e13e986d..e6eeda2e 100644
+--- a/sepolicy/qti/private/property_contexts
++++ b/sepolicy/qti/private/property_contexts
+@@ -28,6 +28,7 @@ ro.vendor.oplus.regionmark       u:object_r:exported_system_prop:s0
+ 
+ # Display
+ awb.purecolor.enable               u:object_r:exported_system_prop:s0
++awb.wbcore.                        u:object_r:exported_system_prop:s0
+ persist.oplus.display.vrr.adfr     u:object_r:exported_system_prop:s0
+ persist.sys.display.iris.absent    u:object_r:system_oplus_iris_prop:s0
+ ro.oplus.display.                  u:object_r:exported_system_prop:s0
+@@ -58,6 +59,9 @@ persist.sys.log.ae              u:object_r:exported_system_prop:s0
+ persist.sys.log.af              u:object_r:exported_system_prop:s0
+ persist.sys.log.awb             u:object_r:exported_system_prop:s0
+ 
++# Media
++ro.oplus.vpp.    u:object_r:exported_system_prop:s0
++
+ # Modem
+ persist.sys.enable_modem_dump    u:object_r:exported_system_prop:s0
+ 
+@@ -82,6 +86,7 @@ ro.build.version.svn      u:object_r:exported_system_prop:s0
+ ro.build.version.svn.c    u:object_r:exported_system_prop:s0
+ 
+ # Touch
++persist.hbp.             u:object_r:system_oplus_touch_prop:s0
+ persist.sys.alwayson.    u:object_r:system_oplus_touch_prop:s0
+ persist.sys.tpic.        u:object_r:system_oplus_touch_prop:s0
+ sys.touch.game_mode      u:object_r:system_oplus_touch_prop:s0
+diff --git a/sepolicy/qti/vendor/file.te b/sepolicy/qti/vendor/file.te
+index e66b47e0..94f48639 100644
+--- a/sepolicy/qti/vendor/file.te
++++ b/sepolicy/qti/vendor/file.te
+@@ -23,6 +23,9 @@ type vendor_proc_engineer, fs_type, proc_type;
+ type vendor_persist_fingerprint_file, file_type;
+ type vendor_proc_fingerprint, fs_type, proc_type;
+ 
++# Frame boost
++type vendor_proc_oplus_frame_boost, fs_type, proc_type;
++
+ # Graphics
+ type vendor_sysfs_sde_crtc, fs_type, sysfs_type;
+ 
+diff --git a/sepolicy/qti/vendor/file_contexts b/sepolicy/qti/vendor/file_contexts
+index cc255c32..ed7ba358 100644
+--- a/sepolicy/qti/vendor/file_contexts
++++ b/sepolicy/qti/vendor/file_contexts
+@@ -187,18 +187,21 @@
+ /dev/stmvl53l1_ranging                      u:object_r:vendor_tof_device:s0
+ 
+ # Touch
+-/(odm|vendor/odm)/bin/hw/vendor-oplus-hardware-touch-V1-service    u:object_r:hal_oplus_touch_aidl_exec:s0
+-/(odm|vendor/odm)/bin/hw/vendor-oplus-hardware-touch-V2-service    u:object_r:hal_oplus_touch_aidl_exec:s0
+-/(odm|vendor/odm)/bin/touchDaemon                                  u:object_r:oplus_touchdaemon_exec:s0
+-/vendor/bin/hw/vendor\.lineage\.touch-service\.oplus               u:object_r:hal_lineage_touch_default_exec:s0
+-/data/vendor/touch(/.*)?                                           u:object_r:vendor_persist_oplus_touch_file:s0
+-/data/vendor/touchconfig(/.*)?                                     u:object_r:vendor_persist_oplus_touch_file:s0
+-/dev/socket/hidl2touchdaemon_client                                u:object_r:oplus_touchdaemon_socket:s0
+-/dev/socket/hidl2touchdaemon_server                                u:object_r:oplus_touchdaemon_socket:s0
+-/dev/tcm_hbp0                                                      u:object_r:oplus_touchdaemon_device:s0
+-/dev/tcm1                                                          u:object_r:oplus_touchdaemon_device:s0
+-/dev/tp_misc(/.*)?                                                 u:object_r:oplus_touchdaemon_device:s0
+-/dev/tp_misc1                                                      u:object_r:oplus_touchdaemon_device:s0
++/(odm|vendor/odm)/bin/hw/vendor-oplus-hardware-touch-V1-service            u:object_r:hal_oplus_touch_aidl_exec:s0
++/(odm|vendor/odm)/bin/hw/vendor-oplus-hardware-touch-V2(-hbp5)?-service    u:object_r:hal_oplus_touch_aidl_exec:s0
++/(odm|vendor/odm)/bin/touchDaemon                                          u:object_r:oplus_touchdaemon_exec:s0
++/vendor/bin/hw/vendor\.lineage\.touch-service\.oplus                       u:object_r:hal_lineage_touch_default_exec:s0
++/data/vendor/touch(/.*)?                                                   u:object_r:vendor_persist_oplus_touch_file:s0
++/data/vendor/touchconfig(/.*)?                                             u:object_r:vendor_persist_oplus_touch_file:s0
++/dev/hbp_core(/.*)?                                                        u:object_r:oplus_touchdaemon_device:s0
++/dev/hbp0                                                                  u:object_r:oplus_touchdaemon_device:s0
++/dev/hbp1                                                                  u:object_r:oplus_touchdaemon_device:s0
++/dev/socket/hidl2touchdaemon_client                                        u:object_r:oplus_touchdaemon_socket:s0
++/dev/socket/hidl2touchdaemon_server                                        u:object_r:oplus_touchdaemon_socket:s0
++/dev/tcm_hbp0                                                              u:object_r:oplus_touchdaemon_device:s0
++/dev/tcm1                                                                  u:object_r:oplus_touchdaemon_device:s0
++/dev/tp_misc(/.*)?                                                         u:object_r:oplus_touchdaemon_device:s0
++/dev/tp_misc1                                                              u:object_r:oplus_touchdaemon_device:s0
+ 
+ # Ultrasound
+ /dev/audio_ultrasound     u:object_r:ultrasound_device:s0
+@@ -221,8 +224,10 @@
+ 
+ # Wireless charging
+ /(odm|vendor/odm)/bin/hw/gauged       u:object_r:wlchgmonitor_exec:s0
++/(odm|vendor/odm)/bin/hw/ufcsd        u:object_r:wlchgmonitor_exec:s0
+ /(odm|vendor/odm)/bin/hw/wlschgd      u:object_r:wlchgmonitor_exec:s0
+ /(odm|vendor/odm)/bin/wlchgmonitor    u:object_r:wlchgmonitor_exec:s0
+ /dev/sec_dev                          u:object_r:wlchg_device:s0
++/dev/ufcs_dev                         u:object_r:wlchg_device:s0
+ /dev/wlchg                            u:object_r:wlchg_device:s0
+ /dev/wls_dev                          u:object_r:wlchg_device:s0
+diff --git a/sepolicy/qti/vendor/genfs_contexts b/sepolicy/qti/vendor/genfs_contexts
+index 45115a35..cbc1871f 100644
+--- a/sepolicy/qti/vendor/genfs_contexts
++++ b/sepolicy/qti/vendor/genfs_contexts
+@@ -39,6 +39,9 @@ genfscon proc /oplus_rf    u:object_r:vendor_proc_engineer:s0
+ # Fingerprint
+ genfscon proc /fp_id    u:object_r:vendor_proc_fingerprint:s0
+ 
++# Frame boost
++genfscon proc /oplus_frame_boost    u:object_r:vendor_proc_oplus_frame_boost:s0
++
+ # Graphics
+ genfscon sysfs /devices/platform/soc/ae00000.qcom,mdss_mdp/drm/card0/sde-crtc-0/early_wakeup    u:object_r:vendor_sysfs_sde_crtc:s0
+ genfscon sysfs /devices/platform/soc/ae00000.qcom,mdss_mdp/drm/card0/sde-crtc-1/early_wakeup    u:object_r:vendor_sysfs_sde_crtc:s0
+@@ -99,6 +102,10 @@ genfscon sysfs /devices/platform/soc/a8c000.i2c/i2c-5/5-005a/leds/vibrator    u:
+ genfscon sysfs /devices/platform/soc/a8c000.i2c/i2c-6/6-005a/leds/vibrator    u:object_r:sysfs_vibrator:s0
+ 
+ # Wakeup (https://lkml.org/lkml/2019/8/6/1275)
++genfscon sysfs /devices/platform/soc/19c0000.qcom,qupv3_3_geni_se/1988000.i2c/i2c-18/18-006a/ufcs/ufcs/wakeup u:object_r:sysfs_wakeup:s0
++genfscon sysfs /devices/platform/soc/19c0000.qcom,qupv3_3_geni_se/1988000.i2c/i2c-18/18-006a/wakeup u:object_r:sysfs_wakeup:s0
++genfscon sysfs /devices/platform/soc/1ac0000.qcom,qupv3_4_geni_se/1a84000.qcom,qup_uart/wakeup u:object_r:sysfs_wakeup:s0
++genfscon sysfs /devices/platform/soc/1ac0000.qcom,qupv3_4_geni_se/1a88000.i2c/i2c-21/21-0028/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/4a80000.i2c/i2c-3/3-0028/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/4a80000.spi/spi_master/spi0/spi0.0/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/4a88000.i2c/i2c-4/4-004e/tcpc/type_c_port0/wakeup u:object_r:sysfs_wakeup:s0
+@@ -135,6 +142,11 @@ genfscon sysfs /devices/platform/soc/994000.i2c/i2c-5/5-003b/994000.i2c:op,wlchg
+ genfscon sysfs /devices/platform/soc/994000.i2c/i2c-5/5-0066/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/994000.i2c/i2c-8/8-003b/994000.i2c:op,wlchg_rx@3b:idt,p9415/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/994000.i2c/i2c-8/8-0066/wakeup u:object_r:sysfs_wakeup:s0
++genfscon sysfs /devices/platform/soc/9c0000.qcom,qupv3_i2c_geni_se/980000.i2c/i2c-24/24-006a/ufcs/ufcs/wakeup u:object_r:sysfs_wakeup:s0
++genfscon sysfs /devices/platform/soc/9c0000.qcom,qupv3_i2c_geni_se/980000.i2c/i2c-24/24-006a/wakeup u:object_r:sysfs_wakeup:s0
++genfscon sysfs /devices/platform/soc/9c0000.qcom,qupv3_i2c_geni_se/984000.i2c/i2c-24/24-0036/wakeup u:object_r:sysfs_wakeup:s0
++genfscon sysfs /devices/platform/soc/9c0000.qcom,qupv3_i2c_geni_se/984000.i2c/i2c-25/25-0037/wakeup u:object_r:sysfs_wakeup:s0
++genfscon sysfs /devices/platform/soc/9c0000.qcom,qupv3_i2c_geni_se/984000.i2c/i2c-25/25-006a/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/9c0000.qcom,qupv3_i2c_geni_se/988000.i2c/i2c-5/5-006a/ufcs/ufcs/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/9c0000.qcom,qupv3_i2c_geni_se/988000.i2c/i2c-5/5-006a/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/9c0000.qcom,qupv3_i2c_geni_se/988000.i2c/i2c-9/9-006f/ufcs/ufcs/wakeup u:object_r:sysfs_wakeup:s0
+@@ -169,11 +181,13 @@ genfscon sysfs /devices/platform/soc/ac0000.qcom,qupv3_1_geni_se/a80000.i2c/i2c-
+ genfscon sysfs /devices/platform/soc/ac0000.qcom,qupv3_1_geni_se/a80000.i2c/i2c-7/7-0028/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/ac0000.qcom,qupv3_1_geni_se/a80000.i2c/i2c-8/8-0028/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/ac0000.qcom,qupv3_1_geni_se/a80000.i2c/i2c-9/9-0028/wakeup u:object_r:sysfs_wakeup:s0
++genfscon sysfs /devices/platform/soc/ac0000.qcom,qupv3_1_geni_se/a84000.qcom,qup_uart/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/ac0000.qcom,qupv3_1_geni_se/a8c000.i2c/i2c-10/10-000e/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/ac0000.qcom,qupv3_1_geni_se/a8c000.i2c/i2c-11/11-000e/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/ac0000.qcom,qupv3_1_geni_se/a8c000.i2c/i2c-13/13-000e/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/ac0000.qcom,qupv3_1_geni_se/a8c000.i2c/i2c-14/14-000e/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/ac0000.qcom,qupv3_1_geni_se/a8c000.i2c/i2c-15/15-000e/wakeup u:object_r:sysfs_wakeup:s0
++genfscon sysfs /devices/platform/soc/ac0000.qcom,qupv3_1_geni_se/a8c000.i2c/i2c-3/3-006a/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/ac0000.qcom,qupv3_1_geni_se/a8c000.i2c/i2c-9/9-000e/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/ac0000.qcom,qupv3_1_geni_se/a90000.i2c/i2c-6/6-004b/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/ac0000.qcom,qupv3_1_geni_se/a90000.i2c/i2c-7/7-004b/wakeup u:object_r:sysfs_wakeup:s0
+@@ -183,6 +197,8 @@ genfscon sysfs /devices/platform/soc/ac0000.qcom,qupv3_1_geni_se/a90000.spi/spi_
+ genfscon sysfs /devices/platform/soc/ac0000.qcom,qupv3_1_geni_se/a90000.spi/spi_master/spi0/spi0.0/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/ac0000.qcom,qupv3_1_geni_se/a90000.spi/spi_master/spi1/spi1.0/synaptics_tcm_hbp.0/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/ac0000.qcom,qupv3_1_geni_se/a9c000.qcom,qup_uart/wakeup u:object_r:sysfs_wakeup:s0
++genfscon sysfs /devices/platform/soc/c400000.arbiter/spmi-0/0-00/c426000.spmi:pmk8850@0:pon_pbs@800/wakeup u:object_r:sysfs_wakeup:s0
++genfscon sysfs /devices/platform/soc/c400000.arbiter/spmi-0/0-00/c426000.spmi:qcom,pmk8550@0:pon_pbs@800/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/c42d000.qcom,spmi/spmi-0/0-00/c42d000.qcom,spmi:qcom,pmk8350@0:pon_pbs@800/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/c42d000.qcom,spmi/spmi-0/0-00/c42d000.qcom,spmi:qcom,pmk8550@0:pon_hlos@1300/c42d000.qcom,spmi:qcom,pmk8550@0:pon_hlos@1300:pwrkey-resin/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/c42d000.qcom,spmi/spmi-0/0-00/c42d000.qcom,spmi:qcom,pmk8550@0:pon_pbs@800/wakeup u:object_r:sysfs_wakeup:s0
+@@ -196,6 +212,7 @@ genfscon sysfs /devices/platform/soc/soc:discrete_charger/power_supply/battery/w
+ genfscon sysfs /devices/platform/soc/soc:discrete_charger/power_supply/usb/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/soc:discrete_charger/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/soc:gpio-hall-sensor/wakeup u:object_r:sysfs_wakeup:s0
++genfscon sysfs /devices/platform/soc/soc:hbp@0/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/soc:oneplus_wlchg/power_supply/wireless/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/soc:oneplus_wlchg/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/soc:oplus,chg_gki/power_supply/battery/wakeup u:object_r:sysfs_wakeup:s0
+@@ -208,6 +225,7 @@ genfscon sysfs /devices/platform/soc/soc:oplus,chg_intf/oplus_chg/usb/wakeup u:o
+ genfscon sysfs /devices/platform/soc/soc:oplus,chg_intf/soc:oplus,chg_intf:oplus,common-charge/oplus_chg/common/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/soc:oplus,chg_intf/soc:oplus,chg_intf:oplus,wireless-charge/oplus_chg/wireless/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/soc:oplus,chg_intf/soc:oplus,chg_intf:oplus,wireless-charge/wakeup u:object_r:sysfs_wakeup:s0
++genfscon sysfs /devices/platform/soc/soc:oplus,chg_recovery/oplus_mms/state_keep/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/soc:oplus,chg_wls/oplus_mms/wireless/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/soc:oplus,chg_wls/oplus_mms/wireless/wireless/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/soc:oplus,chg_wls/wakeup u:object_r:sysfs_wakeup:s0
+@@ -230,6 +248,7 @@ genfscon sysfs /devices/platform/soc/soc:oplus,ufcs_protocol/wakeup u:object_r:s
+ genfscon sysfs /devices/platform/soc/soc:oplus,vooc/oplus_mms/vooc/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/soc:oplus,wireless-charge/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/soc:oplus,wireless-charge/wireless/wakeup u:object_r:sysfs_wakeup:s0
++genfscon sysfs /devices/platform/soc/soc:oplus_satellite/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/soc:pogo_keyboard/wakeup u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/soc:qcom,msm-audio-apr/soc:qcom,msm-audio-apr:qcom,q6core-audio/soc:qcom,msm-audio-apr:qcom,q6core-audio:sound/Listen u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/platform/soc/soc:qcom,pmic_glink/soc:qcom,pmic_glink:qcom,battery_charger/soc:qcom,pmic_glink:qcom,battery_charger:oplus,pm8350_charger:oplus,mms_wired/oplus_mms/wired/usb/wakeup u:object_r:sysfs_wakeup:s0
+diff --git a/sepolicy/qti/vendor/hal_audio_default.te b/sepolicy/qti/vendor/hal_audio_default.te
+index f454dd90..ad1b0d6b 100644
+--- a/sepolicy/qti/vendor/hal_audio_default.te
++++ b/sepolicy/qti/vendor/hal_audio_default.te
+@@ -7,6 +7,8 @@ allow hal_audio_default vendor_proc_mm_fb:file rw_file_perms;
+ 
+ hal_client_domain(hal_audio_default, vendor_hal_oplus_charger)
+ 
++rw_dir_file(hal_audio_default, vendor_proc_oplus_frame_boost)
++rw_dir_file(hal_audio_default, vendor_proc_oplus_scheduler)
+ rw_dir_file(hal_audio_default, vendor_sysfs_battery_supply)
+ rw_dir_file(hal_audio_default, vendor_sysfs_usb_supply)
+ 
+diff --git a/sepolicy/qti/vendor/hal_oplus_touch_aidl.te b/sepolicy/qti/vendor/hal_oplus_touch_aidl.te
+index 7ef1545b..156d6faf 100644
+--- a/sepolicy/qti/vendor/hal_oplus_touch_aidl.te
++++ b/sepolicy/qti/vendor/hal_oplus_touch_aidl.te
+@@ -17,5 +17,18 @@ binder_call(hal_oplus_touch_aidl, oplus_touchdaemon)
+ 
+ unix_socket_send(hal_oplus_touch_aidl, oplus_touchdaemon, oplus_touchdaemon)
+ 
++allow hal_oplus_touch_aidl input_device:dir search;
++allow hal_oplus_touch_aidl input_device:chr_file rw_file_perms;
++
++allow hal_oplus_touch_aidl oplus_touchdaemon_device:chr_file rw_file_perms;
++
++allow hal_oplus_touch_aidl proc_bus_input:file r_file_perms;
++allow hal_oplus_touch_aidl proc_horae:file r_file_perms;
++
++create_dir_file(hal_oplus_touch_aidl, vendor_persist_oplus_touch_file)
+ rw_dir_file(hal_oplus_touch_aidl, oplus_touchdaemon_device)
+ rw_dir_file(hal_oplus_touch_aidl, vendor_proc_display)
++rw_dir_file(hal_oplus_touch_aidl, vendor_sysfs_usb_supply)
++
++set_prop(hal_oplus_touch_aidl, system_oplus_touch_prop)
++set_prop(hal_oplus_touch_aidl, vendor_oplus_touch_prop)
+diff --git a/sepolicy/qti/vendor/oplus_touchdaemon.te b/sepolicy/qti/vendor/oplus_touchdaemon.te
+index 61f2c5f4..97f6836a 100644
+--- a/sepolicy/qti/vendor/oplus_touchdaemon.te
++++ b/sepolicy/qti/vendor/oplus_touchdaemon.te
+@@ -2,6 +2,7 @@ type oplus_touchdaemon, domain;
+ binder_use(oplus_touchdaemon)
+ vndbinder_use(oplus_touchdaemon)
+ 
++binder_call(oplus_touchdaemon, hal_oplus_touch_aidl)
+ binder_call(oplus_touchdaemon, system_server)
+ 
+ type oplus_touchdaemon_exec, file_type, exec_type, vendor_file_type;
+diff --git a/sepolicy/qti/vendor/vendor_qti_init_shell.te b/sepolicy/qti/vendor/vendor_qti_init_shell.te
+index 2c5c088d..4f3c2f13 100644
+--- a/sepolicy/qti/vendor/vendor_qti_init_shell.te
++++ b/sepolicy/qti/vendor/vendor_qti_init_shell.te
+@@ -9,3 +9,4 @@ allow vendor_qti_init_shell vendor_qmcs_file:dir r_dir_perms;
+ allow vendor_qti_init_shell vendor_spunvm_file:dir r_dir_perms;
+ 
+ create_dir_file(vendor_qti_init_shell, mnt_vendor_file)
++rw_dir_file(vendor_qti_init_shell, vendor_proc_oplus_scheduler)

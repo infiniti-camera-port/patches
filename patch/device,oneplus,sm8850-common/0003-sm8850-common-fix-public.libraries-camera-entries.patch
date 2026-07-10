@@ -1,0 +1,36 @@
+From d7bc1dfe38c3dce7c915ae5d7998bf1c4c966499 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 7 Jul 2026 15:58:15 -0600
+Subject: [PATCH 3/6] sm8850-common: fix public.libraries camera entries
+
+Source: 1ef9351f555a3373a343e390e098ff6e198e5919
+---
+ extract-files.py | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/extract-files.py b/extract-files.py
+index f54e4ea..0d75a64 100755
+--- a/extract-files.py
++++ b/extract-files.py
+@@ -176,6 +176,21 @@ blob_fixups: blob_fixups_user_type = {
+         .replace_needed('libtensorflowlite_c.so', 'libtensorflowlite_c_vendor.so'),
+     'vendor/usr/keylayout/gpio-keys.kl': blob_fixup()
+         .add_line_if_missing('key 735   ASSIST'),
++    # APS turbo fix: on the port, the camera app's classloader namespace cannot dlopen the /odm
++    # ArcSoft/QNN helper libs (couple-HDR, turbo, QNN HTP), which gates the DSP/QNN path so turbo
++    # can't run. Exposing them as vendor public libraries lets the app namespace resolve them.
++    # Adapted from sm8750-common; infiniti uses QnnHtpV81Stub (not V79).
++    'vendor/etc/public.libraries.txt': blob_fixup()
++        .add_line_if_missing('libarcsoft_hdr_couple_api.so')
++        .add_line_if_missing('libarcsoft_high_dynamic_range_couple.so')
++        .add_line_if_missing('libarcsoft_smart_denoise.so')
++        .add_line_if_missing('libarcsoft_turbo_hdr_raw.so')
++        .add_line_if_missing('libarcsoft_turbo_raw.so')
++        .add_line_if_missing('libarcsoft_qnnhtp.so')
++        .add_line_if_missing('libQnnHtp.so')
++        .add_line_if_missing('libQnnSystem.so')
++        .add_line_if_missing('libQnnHtpV81Stub.so')
++        .add_line_if_missing('libQnnGpu.so'),
+ }  # fmt: skip
+ 
+ module = ExtractUtilsModule(

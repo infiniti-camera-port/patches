@@ -1,0 +1,69 @@
+From fddc6ceb92bf4be98bc71dcf6a0c67cf30293e10 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 7 Jul 2026 15:57:12 -0600
+Subject: [PATCH 2/6] sm8850-common: source + register Dolby Vision codecs from
+ odm/etc
+
+Source: 813c9c5eef3476e91db00b21191e985dfae00b26
+Change-Id: I8586add92c7e9be55c30ac430f9129bd07055714
+---
+ extract-files.py      | 29 ++++++++++++++++++++++++++++-
+ proprietary-files.txt |  1 +
+ 2 files changed, 29 insertions(+), 1 deletion(-)
+
+diff --git a/extract-files.py b/extract-files.py
+index f520d2f..f54e4ea 100755
+--- a/extract-files.py
++++ b/extract-files.py
+@@ -94,11 +94,38 @@ blob_fixups: blob_fixups_user_type = {
+         .replace_needed('libprotobuf-cpp-lite.so', 'libprotobuf-cpp-lite-21.12.so'),
+     'system_ext/lib64/libwfdnative.so': blob_fixup()
+         .add_needed('libinput_shim.so'),
++    # Inject Dolby Vision codec include into every non-vendor canoe variant (DV nodes live in
++    # odm/etc/media_codecs_dolby_vision.xml, remapped to vendor/etc/ so MediaCodecsXmlParser
++    # can resolve <Include href="..."/> relative to the same /vendor/etc/ search dir).
++    # Empirically verified on device: pushing dolby_vision.xml to /vendor/etc/ and adding
++    # the Include to canoe_v2.xml caused c2.qti.dv.{decoder,decoder.secure,encoder} to appear
++    # in IComponentStore/default after reboot — confirmed via dumpsys.
+     (
++        'vendor/etc/media_codecs_canoe_sku1.xml',
++        'vendor/etc/media_codecs_canoe_sku2.xml',
+         'vendor/etc/media_codecs_canoe_sku3.xml',
++        'vendor/etc/media_codecs_canoe_v1.xml',
+         'vendor/etc/media_codecs_canoe_v2.xml',
+     ): blob_fixup()
+-        .regex_replace('.*media_codecs_(google_audio|google_c2|google_telephony|google_video|vendor_audio).*\n', ''),
++        .regex_replace('.*media_codecs_(google_audio|google_c2|google_telephony|google_video|vendor_audio).*\n', '')
++        .regex_replace(r'([ \t]*</MediaCodecs>)', r'    <Include href="media_codecs_dolby_vision.xml" />\n\1'),
++    # Dolby Vision: the c2.qti.dv decoder/decoder.secure/encoder nodes ship COMMENTED in the
++    # *_vendor.xml codec variants — and those (not the non-vendor canoe_v2.xml) are the files the
++    # framework's Codec2InfoBuilder parses. Un-comment them in place so MediaCodecList registers DV
++    # and VIDEO -> Dolby Vision recording can create c2.qti.dv.encoder (else it aborts with no file).
++    # Mirrors OnePlus stock (ships them commented) and the sm8750/sun fixup. Device-verified.
++    (
++        'vendor/etc/media_codecs_canoe_v1_vendor.xml',
++        'vendor/etc/media_codecs_canoe_v2_vendor.xml',
++        'vendor/etc/media_codecs_canoe_sku1_vendor.xml',
++        'vendor/etc/media_codecs_canoe_sku2_vendor.xml',
++    ): blob_fixup()
++        .regex_replace(r'<!--\s*<MediaCodec name="c2\.qti\.dv\.decoder" type="video/dolby-vision" >',
++                       r'<MediaCodec name="c2.qti.dv.decoder" type="video/dolby-vision" >')
++        .regex_replace(r'\n[ \t]*-->(\s*</Decoders>)', r'\1')
++        .regex_replace(r'<!--\s*<MediaCodec name="c2\.qti\.dv\.encoder" type="video/dolby-vision">',
++                       r'<MediaCodec name="c2.qti.dv.encoder" type="video/dolby-vision">')
++        .regex_replace(r'\n[ \t]*-->(\s*</Encoders>)', r'\1'),
+     (
+         'vendor/lib64/hw/android.hardware.bluetooth.audio_sw.so',
+         'vendor/lib64/hw/libaudiocorehal.default.so',
+diff --git a/proprietary-files.txt b/proprietary-files.txt
+index 814a60e..92e8174 100644
+--- a/proprietary-files.txt
++++ b/proprietary-files.txt
+@@ -564,6 +564,7 @@ vendor/etc/media_codecs_canoe_v1.xml
+ vendor/etc/media_codecs_canoe_v1_vendor.xml
+ vendor/etc/media_codecs_canoe_v2.xml
+ vendor/etc/media_codecs_canoe_v2_vendor.xml
++odm/etc/media_codecs_dolby_vision.xml:vendor/etc/media_codecs_dolby_vision.xml
+ vendor/etc/media_codecs_performance_canoe_sku1.xml
+ vendor/etc/media_codecs_performance_canoe_sku1_vendor.xml
+ vendor/etc/media_codecs_performance_canoe_sku2.xml
