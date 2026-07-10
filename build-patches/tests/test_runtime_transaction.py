@@ -61,6 +61,7 @@ class RuntimeTransactionTests(unittest.TestCase):
             self.repo_root / "external/google-highway/Android.bp",
             self.repo_root / "external/skia/Android.bp",
             self.repo_root / "external/dng_sdk/Android.bp",
+            self.repo_root / "packages/apps/Settings/src/com/android/settings/dashboard/CategoryManager.java",
         )
         self.original_bytes = tuple(path.read_bytes() for path in self.target_paths)
 

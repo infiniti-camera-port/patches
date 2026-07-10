@@ -12,13 +12,15 @@ mkdir -p \
   "$repo_root/device/oneplus/infiniti" \
   "$repo_root/external/dng_sdk" \
   "$repo_root/external/google-highway" \
-  "$repo_root/external/skia"
+  "$repo_root/external/skia" \
+  "$repo_root/packages/apps/Settings/src/com/android/settings/dashboard"
 
 git -C "$repo_root/build/soong" init -q
 git -C "$repo_root/device/oneplus/infiniti" init -q
 git -C "$repo_root/external/dng_sdk" init -q
 git -C "$repo_root/external/google-highway" init -q
 git -C "$repo_root/external/skia" init -q
+git -C "$repo_root/packages/apps/Settings" init -q
 
 cat > "$repo_root/build/soong/scripts/check_boot_jars/package_allowed_list.txt" <<'EOF'
 com\.oplus\..*
@@ -113,10 +115,58 @@ PRODUCT_DEVICE := infiniti
 PRODUCT_MANUFACTURER := OnePlus
 EOF
 
+cat > "$repo_root/packages/apps/Settings/src/com/android/settings/dashboard/CategoryManager.java" <<'EOF'
+package com.android.settings.dashboard;
+
+public class CategoryManager {
+
+    private synchronized void tryInitCategories(Context context, boolean forceClearCache) {
+        if (mCategories == null) {
+            mCategoryByKeyMap.clear();
+            mCategories = TileUtils.getCategories(context, mTileByComponentCache);
+            for (DashboardCategory category : mCategories) {
+                mCategoryByKeyMap.put(category.key, category);
+            }
+            backwardCompatCleanupForCategory(mTileByComponentCache, mCategoryByKeyMap);
+            mergeSecurityPrivacyKeys(context, mTileByComponentCache, mCategoryByKeyMap);
+            sortCategories(context, mCategoryByKeyMap);
+            filterDuplicateTiles(mCategoryByKeyMap);
+        }
+    }
+
+    @VisibleForTesting
+    synchronized void backwardCompatCleanupForCategory(
+            Map<Pair<String, String>, Tile> tileByComponentCache,
+            Map<String, DashboardCategory> categoryByKeyMap) {
+        for (Entry<String, List<Tile>> entry : packageToTileMap.entrySet()) {
+            if (useOldKey && !useNewKey) {
+                for (Tile tile : tiles) {
+                    newCategory.addTile(tile);
+                }
+            }
+        }
+    }
+
+    /**
+     * Merges {@link CategoryKey#CATEGORY_SECURITY_ADVANCED_SETTINGS} and {@link
+     * CategoryKey#CATEGORY_PRIVACY} into {@link
+     * CategoryKey#CATEGORY_MORE_SECURITY_PRIVACY_SETTINGS}
+     */
+    @VisibleForTesting
+    synchronized void mergeSecurityPrivacyKeys(
+            Context context,
+            Map<Pair<String, String>, Tile> tileByComponentCache,
+            Map<String, DashboardCategory> categoryByKeyMap) {
+    }
+}
+EOF
+
 git -C "$repo_root/build/soong" add scripts
 git -C "$repo_root/build/soong" -c user.name=guard-test -c user.email=guard-test@example.invalid commit -qm init
 git -C "$repo_root/device/oneplus/infiniti" add lineage_infiniti.mk
 git -C "$repo_root/device/oneplus/infiniti" -c user.name=guard-test -c user.email=guard-test@example.invalid commit -qm init
+git -C "$repo_root/packages/apps/Settings" add src
+git -C "$repo_root/packages/apps/Settings" -c user.name=guard-test -c user.email=guard-test@example.invalid commit -qm init
 
 report="$scratch/report.txt"
 if python3 "$script_dir/apply-build-patches.py" --check-only --repo-root "$repo_root" >"$report" 2>&1; then

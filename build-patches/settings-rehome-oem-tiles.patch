@@ -1,0 +1,85 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Fri, 10 Jul 2026 14:40:33 -0600
+Subject: [PATCH] Settings: re-home orphan-category OEM tiles to advanced
+ security
+
+OEM prebuilts com.aiunit.aon ("EZ Pay") and com.oplus.aiunit ("AI Service
+Engine") declare MANUFACTURER_APPLICATION_SETTING tiles without a valid
+com.android.settings.category meta-data (AON has none; AIUnit misspells it
+as com.android.settings.category.export). TileUtils.loadTile() then leaves
+the tile category null, tryInitCategories() stores a DashboardCategory
+under a null key, and every DashboardFragment without an explicit
+DashboardFragmentRegistry mapping resolves its category key to null and
+renders that category, leaking both tiles into Reset options and every
+other unregistered Settings subpage.
+
+The apks are OEM-signed prebuilts, so fix it in Settings: re-home tiles
+from a null/empty category key to CATEGORY_SECURITY_ADVANCED_SETTINGS and
+drop the invalid key from mCategoryByKeyMap. mergeSecurityPrivacyKeys()
+then migrates them to "More security and privacy" when SafetyCenter is
+enabled, and they surface under "More security settings" otherwise.
+---
+ .../settings/dashboard/CategoryManager.java   | 40 +++++++++++++++++++
+ 1 file changed, 40 insertions(+)
+
+diff --git a/src/com/android/settings/dashboard/CategoryManager.java b/src/com/android/settings/dashboard/CategoryManager.java
+--- a/src/com/android/settings/dashboard/CategoryManager.java
++++ b/src/com/android/settings/dashboard/CategoryManager.java
+@@ -161,6 +161,7 @@ public class CategoryManager {
+             for (DashboardCategory category : mCategories) {
+                 mCategoryByKeyMap.put(category.key, category);
+             }
++            rehomeOrphanCategoryTiles(mCategoryByKeyMap);
+             backwardCompatCleanupForCategory(mTileByComponentCache, mCategoryByKeyMap);
+             mergeSecurityPrivacyKeys(context, mTileByComponentCache, mCategoryByKeyMap);
+             sortCategories(context, mCategoryByKeyMap);
+@@ -236,6 +237,45 @@ public class CategoryManager {
+         }
+     }
+ 
++    /**
++     * Re-homes tiles whose category resolved to a null or empty key into {@link
++     * CategoryKey#CATEGORY_SECURITY_ADVANCED_SETTINGS} and removes the invalid
++     * category from the key map.
++     *
++     * Some OEM prebuilts declare a MANUFACTURER_APPLICATION_SETTING tile without
++     * a valid com.android.settings.category meta-data, so TileUtils resolves
++     * their category to null. Every DashboardFragment missing an explicit
++     * DashboardFragmentRegistry mapping also looks up its tiles with a null
++     * category key, so such tiles would otherwise leak into every unregistered
++     * subpage. Tagging them as advanced security keeps them in a single sensible
++     * location and lets {@link #mergeSecurityPrivacyKeys} migrate them to
++     * "More security and privacy" when SafetyCenter is enabled.
++     */
++    @VisibleForTesting
++    synchronized void rehomeOrphanCategoryTiles(
++            Map<String, DashboardCategory> categoryByKeyMap) {
++        final List<String> orphanKeys = new ArrayList<>();
++        for (Entry<String, DashboardCategory> categoryEntry : categoryByKeyMap.entrySet()) {
++            if (TextUtils.isEmpty(categoryEntry.getKey())) {
++                orphanKeys.add(categoryEntry.getKey());
++            }
++        }
++        for (String orphanKey : orphanKeys) {
++            final DashboardCategory orphanCategory = categoryByKeyMap.remove(orphanKey);
++            final String newCategoryKey = CategoryKey.CATEGORY_SECURITY_ADVANCED_SETTINGS;
++            for (Tile tile : orphanCategory.getTiles()) {
++                tile.setCategory(newCategoryKey);
++                // move tile to new category.
++                DashboardCategory newCategory = categoryByKeyMap.get(newCategoryKey);
++                if (newCategory == null) {
++                    newCategory = new DashboardCategory(newCategoryKey);
++                    categoryByKeyMap.put(newCategoryKey, newCategory);
++                }
++                newCategory.addTile(tile);
++            }
++        }
++    }
++
+     /**
+      * Merges {@link CategoryKey#CATEGORY_SECURITY_ADVANCED_SETTINGS} and {@link
+      * CategoryKey#CATEGORY_PRIVACY} into {@link
+-- 
+2.50.1 (Apple Git-155)
+

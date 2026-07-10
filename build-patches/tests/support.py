@@ -90,6 +90,53 @@ DNG_FILES = {
 """
 }
 
+SETTINGS_FILES = {
+    "src/com/android/settings/dashboard/CategoryManager.java": """package com.android.settings.dashboard;
+
+public class CategoryManager {
+
+    private synchronized void tryInitCategories(Context context, boolean forceClearCache) {
+        if (mCategories == null) {
+            mCategoryByKeyMap.clear();
+            mCategories = TileUtils.getCategories(context, mTileByComponentCache);
+            for (DashboardCategory category : mCategories) {
+                mCategoryByKeyMap.put(category.key, category);
+            }
+            backwardCompatCleanupForCategory(mTileByComponentCache, mCategoryByKeyMap);
+            mergeSecurityPrivacyKeys(context, mTileByComponentCache, mCategoryByKeyMap);
+            sortCategories(context, mCategoryByKeyMap);
+            filterDuplicateTiles(mCategoryByKeyMap);
+        }
+    }
+
+    @VisibleForTesting
+    synchronized void backwardCompatCleanupForCategory(
+            Map<Pair<String, String>, Tile> tileByComponentCache,
+            Map<String, DashboardCategory> categoryByKeyMap) {
+        for (Entry<String, List<Tile>> entry : packageToTileMap.entrySet()) {
+            if (useOldKey && !useNewKey) {
+                for (Tile tile : tiles) {
+                    newCategory.addTile(tile);
+                }
+            }
+        }
+    }
+
+    /**
+     * Merges {@link CategoryKey#CATEGORY_SECURITY_ADVANCED_SETTINGS} and {@link
+     * CategoryKey#CATEGORY_PRIVACY} into {@link
+     * CategoryKey#CATEGORY_MORE_SECURITY_PRIVACY_SETTINGS}
+     */
+    @VisibleForTesting
+    synchronized void mergeSecurityPrivacyKeys(
+            Context context,
+            Map<Pair<String, String>, Tile> tileByComponentCache,
+            Map<String, DashboardCategory> categoryByKeyMap) {
+    }
+}
+"""
+}
+
 
 def run_command(arguments: list[str], *, cwd: Path, env: Mapping[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -142,11 +189,13 @@ def create_repo_root(root: Path) -> Path:
     highway = root / "external/google-highway"
     skia = root / "external/skia"
     dng = root / "external/dng_sdk"
+    settings = root / "packages/apps/Settings"
     initialize_repo(soong, SOONG_FILES)
     initialize_repo(device, DEVICE_FILES)
     initialize_repo(highway, HIGHWAY_FILES)
     initialize_repo(skia, SKIA_FILES)
     initialize_repo(dng, DNG_FILES)
+    initialize_repo(settings, SETTINGS_FILES)
     return root
 
 

@@ -49,3 +49,10 @@ patches:
     expected_head: 60de57ba9f18dd6366914ad74580063fe102c87c
     expected_base_sha256: e317f6e4150f83b3ffbc534924d232e90c77b805284f8fdcb554639ab6419b66
     expected_applied_sha256: 435ffd6377e69a6a919f656a70f428117c81c566a9a12b89ed827023dbc4c664
+
+  - name: settings-rehome-oem-tiles
+    target_repo: packages/apps/Settings
+    target_path: src/com/android/settings/dashboard/CategoryManager.java
+    apply_order: 7
+    sha256: 87faaa9331fe34053d2791c0ad2ea1a8dbcd3e1e84ace2e1d754853cb3dc4f08
+    rationale: Re-home OEM tiles with a null/empty category key (com.aiunit.aon EZ Pay, com.oplus.aiunit AI Service Engine) to advanced security so they stop leaking into every unregistered Settings subpage.
