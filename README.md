@@ -14,7 +14,8 @@ Manifest consumers already have the eight source series and must not apply
 
 Only `lineage_infiniti-bp4a-userdebug` has been built and runtime-validated.
 macan, macanc, and fairlady are included in the split repository graph, but
-their builds are deferred, not failed blockers. The archived monoliths
+are not yet built/runtime-validated; they are queued in the approved all-device
+build/static-QA pass. No result is inferred yet. The archived monoliths
 `vendor_oplus_camera`, `device_oneplus_infiniti-camera`, and
 `device_oneplus_sm8850-common-camera` are not active dependencies.
 
