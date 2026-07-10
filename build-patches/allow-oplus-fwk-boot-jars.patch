@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Fri, 3 Jul 2026 12:54:18 -0600
+Subject: [PATCH] check_boot_jars: allow oplus-fwk OEM stub packages on the
+ bootclasspath
+
+The full crDroid boot-jars-package-check rejects hardware/oplus/oplus-fwk/
+oplus-fwk.jar because OEM stub package namespaces are not in
+package_allowed_list.txt.
+
+Add the mandatory com.oplusx.* namespace. Also allow com.coloros.deepthinker
+and com.itgsa.opensdk.wm: Marker-3 infiniti builds prove oplus-fwk.jar contains
+com.coloros.deepthinker.IColorDeepThinkerManager and
+com.itgsa.opensdk.wm.ActivityMultiWindowAllowance on the bootclasspath.
+---
+ scripts/check_boot_jars/package_allowed_list.txt | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/scripts/check_boot_jars/package_allowed_list.txt b/scripts/check_boot_jars/package_allowed_list.txt
+--- a/scripts/check_boot_jars/package_allowed_list.txt
++++ b/scripts/check_boot_jars/package_allowed_list.txt
+@@ -300,6 +300,17 @@ vendor\.oplus\..*
+ com\.oneplus\..*
+ vendor\.oneplus\..*
+ 
++# infiniti camera-port v3: oplus-fwk boot-jar OEM stub namespaces missing from crDroid base.
++# MANDATORY: com.oplusx.sysapi.cryptoeng is load-bearing for AIUnit CryptoengNative,
++# the cryptoeng HAL client, and FIDO attestation.
++# BUILD-PROVEN: oplus-fwk.jar exports com.coloros.deepthinker.IColorDeepThinkerManager
++# during the Marker-3 infiniti build boot-jar package check.
++com\.coloros\.deepthinker
++# BUILD-PROVEN: oplus-fwk.jar exports com.itgsa.opensdk.wm.ActivityMultiWindowAllowance
++# during the Marker-3 infiniti build boot-jar package check.
++com\.itgsa\.opensdk\.wm
++com\.oplusx\..*
++
+ # QC adds
+ com.qualcomm.qti
+ com.quicinc.tcmiface
+-- 
+2.49.0

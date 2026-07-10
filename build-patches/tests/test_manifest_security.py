@@ -1,0 +1,134 @@
+from __future__ import annotations
+
+import os
+import tempfile
+import unittest
+from pathlib import Path
+
+from support import (
+    SOONG_FILES,
+    copy_overlay,
+    create_repo_root,
+    initialize_repo,
+    output_of,
+    replace_manifest,
+    run_overlay,
+    write_git_wrapper,
+)
+
+
+class ManifestSecurityTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory(prefix="build-patch-manifest-")
+        self.scratch = Path(self.temporary_directory.name)
+        self.overlay = copy_overlay(self.scratch / "overlay")
+        self.repo_root = create_repo_root(self.scratch / "repo")
+
+    def tearDown(self) -> None:
+        self.temporary_directory.cleanup()
+
+    def assert_rejected(self, expected: str) -> None:
+        result = run_overlay(self.overlay, self.repo_root)
+        self.assertNotEqual(result.returncode, 0, output_of(result))
+        self.assertIn(expected, output_of(result))
+
+    def test_duplicate_mapping_key_is_rejected(self) -> None:
+        replace_manifest(
+            self.overlay,
+            "    target_repo: build/soong\n",
+            "    target_repo: build/soong\n    target_repo: build/soong\n",
+        )
+        self.assert_rejected("duplicate key")
+
+    def test_duplicate_patches_section_is_rejected(self) -> None:
+        manifest = self.overlay / "manifest.yml"
+        manifest.write_text(manifest.read_text(encoding="utf-8") + "\npatches:\n", encoding="utf-8")
+        self.assert_rejected("patches: section")
+
+    def test_invalid_utf8_manifest_has_named_error(self) -> None:
+        manifest = self.overlay / "manifest.yml"
+        manifest.write_bytes(b"patches:\n\xff\n")
+        result = run_overlay(self.overlay, self.repo_root)
+        self.assertNotEqual(result.returncode, 0, output_of(result))
+        self.assertIn("[MANIFEST FAIL]", output_of(result))
+        self.assertNotIn("Traceback", output_of(result))
+
+    def test_absolute_and_parent_target_components_are_rejected(self) -> None:
+        outside_repo = self.scratch / "outside"
+        initialize_repo(outside_repo, SOONG_FILES)
+        cases = (
+            ("target_repo: build/soong", f"target_repo: {outside_repo}"),
+            ("target_repo: build/soong", "target_repo: ../outside"),
+            (
+                "target_path: scripts/check_boot_jars/package_allowed_list.txt",
+                f"target_path: {outside_repo / 'scripts/check_boot_jars/package_allowed_list.txt'}",
+            ),
+            ("target_path: scripts/check_boot_jars/package_allowed_list.txt", "target_path: ../outside.txt"),
+        )
+        for index, (old, new) in enumerate(cases):
+            with self.subTest(new=new):
+                case_overlay = copy_overlay(self.scratch / f"containment-{index}")
+                original_overlay = self.overlay
+                self.overlay = case_overlay
+                replace_manifest(case_overlay, old, new)
+                self.assert_rejected("path component")
+                self.overlay = original_overlay
+
+    def test_symlink_patch_file_is_rejected(self) -> None:
+        patch_file = self.overlay / "allow-oplus-fwk-boot-jars.patch"
+        payload = self.scratch / "payload.patch"
+        payload.write_bytes(patch_file.read_bytes())
+        patch_file.unlink()
+        patch_file.symlink_to(payload)
+        self.assert_rejected("symlink")
+
+    def test_symlink_repo_component_is_rejected(self) -> None:
+        external = self.scratch / "external-soong"
+        initialize_repo(external, SOONG_FILES)
+        soong = self.repo_root / "build/soong"
+        for child in sorted(soong.rglob("*"), reverse=True):
+            if child.is_file():
+                child.unlink()
+            elif child.is_dir():
+                child.rmdir()
+        soong.rmdir()
+        soong.symlink_to(external, target_is_directory=True)
+        self.assert_rejected("symlink")
+
+    def test_symlink_target_path_is_rejected(self) -> None:
+        target = self.repo_root / "build/soong/scripts/check_boot_jars/package_allowed_list.txt"
+        external = self.scratch / "external-target.txt"
+        external.write_bytes(target.read_bytes())
+        target.unlink()
+        target.symlink_to(external)
+        self.assert_rejected("symlink")
+
+    def test_nested_repo_path_must_equal_git_toplevel(self) -> None:
+        soong = self.repo_root / "build/soong"
+        nested_target = soong / "nested/scripts/check_boot_jars/package_allowed_list.txt"
+        nested_target.parent.mkdir(parents=True)
+        nested_target.write_text(SOONG_FILES["scripts/check_boot_jars/package_allowed_list.txt"], encoding="utf-8")
+        replace_manifest(self.overlay, "target_repo: build/soong", "target_repo: build/soong/nested")
+        self.assert_rejected("Git top-level")
+
+    def test_inherited_git_environment_is_not_visible_to_git(self) -> None:
+        wrapper_dir = self.scratch / "bin"
+        wrapper_dir.mkdir()
+        write_git_wrapper(wrapper_dir, self.repo_root, "inspect")
+        config = self.scratch / "gitconfig"
+        config.write_text("[core]\n\tfsmonitor = /does/not/run\n", encoding="utf-8")
+        result = run_overlay(
+            self.overlay,
+            self.repo_root,
+            environment={
+                "PATH": f"{wrapper_dir}{os.pathsep}{os.environ['PATH']}",
+                "GIT_CONFIG_GLOBAL": str(config),
+                "XDG_CONFIG_HOME": str(self.scratch / "xdg"),
+            },
+        )
+        self.assertEqual(result.returncode, 0, output_of(result))
+        self.assertFalse((wrapper_dir / "unsafe-environment").exists())
+
+
+if __name__ == "__main__":
+    unittest.main()
