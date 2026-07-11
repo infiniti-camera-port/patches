@@ -13,6 +13,7 @@ REQUIRED_PATCHES: Final = frozenset(
         "allow-oplus-fwk-boot-jars",
         "restore-userdebug-variant",
         "device-not-debuggable-empty",
+        "libdng-sdk-core-only",
         "libhwy-vendor-available",
         "libskia-skcms-vendor-available",
     }

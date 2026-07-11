@@ -10,11 +10,13 @@ mkdir -p \
   "$repo_root/build/soong/scripts/check_boot_jars" \
   "$repo_root/build/soong/scripts" \
   "$repo_root/device/oneplus/infiniti" \
+  "$repo_root/external/dng_sdk" \
   "$repo_root/external/google-highway" \
   "$repo_root/external/skia"
 
 git -C "$repo_root/build/soong" init -q
 git -C "$repo_root/device/oneplus/infiniti" init -q
+git -C "$repo_root/external/dng_sdk" init -q
 git -C "$repo_root/external/google-highway" init -q
 git -C "$repo_root/external/skia" init -q
 
@@ -64,6 +66,21 @@ cc_library_static {
     srcs: [
         "modules/skcms/skcms.cc",
     ],
+}
+EOF
+
+cat > "$repo_root/external/dng_sdk/Android.bp" <<'EOF'
+cc_library {
+    name: "libdng_sdk",
+    host_supported: true,
+    sdk_version: "current",
+    defaults: ["libdng_sdk-defaults"],
+    vendor_available: true,
+
+    sanitize: {
+        // For now we want to disable the ubsan_minimal runtime so that we can
+        never: true,
+    },
 }
 EOF
 

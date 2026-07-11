@@ -60,6 +60,7 @@ class RuntimeTransactionTests(unittest.TestCase):
             self.repo_root / "device/oneplus/infiniti/lineage_infiniti.mk",
             self.repo_root / "external/google-highway/Android.bp",
             self.repo_root / "external/skia/Android.bp",
+            self.repo_root / "external/dng_sdk/Android.bp",
         )
         self.original_bytes = tuple(path.read_bytes() for path in self.target_paths)
 

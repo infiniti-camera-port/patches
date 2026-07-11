@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Sat, 11 Jul 2026 11:30:00 -0600
+Subject: [PATCH] dng_sdk: keep the library core-only
+
+DNG 1.7.1 links the core-only XMP toolkit. Drop the unused vendor variant so
+Soong does not request a vendor/static XMP dependency for the Infiniti graph.
+---
+ Android.bp | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/Android.bp b/Android.bp
+--- a/Android.bp
++++ b/Android.bp
+@@ -103,7 +103,6 @@ cc_library {
+     host_supported: true,
+     sdk_version: "current",
+     defaults: ["libdng_sdk-defaults"],
+-    vendor_available: true,
+ 
+     sanitize: {
+         // For now we want to disable the ubsan_minimal runtime so that we can
+--
+2.49.0

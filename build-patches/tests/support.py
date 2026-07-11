@@ -74,6 +74,22 @@ cc_library_static {
 """
 }
 
+DNG_FILES = {
+    "Android.bp": """cc_library {
+    name: "libdng_sdk",
+    host_supported: true,
+    sdk_version: "current",
+    defaults: ["libdng_sdk-defaults"],
+    vendor_available: true,
+
+    sanitize: {
+        // For now we want to disable the ubsan_minimal runtime so that we can
+        never: true,
+    },
+}
+"""
+}
+
 
 def run_command(arguments: list[str], *, cwd: Path, env: Mapping[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -125,10 +141,12 @@ def create_repo_root(root: Path) -> Path:
     device = root / "device/oneplus/infiniti"
     highway = root / "external/google-highway"
     skia = root / "external/skia"
+    dng = root / "external/dng_sdk"
     initialize_repo(soong, SOONG_FILES)
     initialize_repo(device, DEVICE_FILES)
     initialize_repo(highway, HIGHWAY_FILES)
     initialize_repo(skia, SKIA_FILES)
+    initialize_repo(dng, DNG_FILES)
     return root
 
 

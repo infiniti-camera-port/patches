@@ -4,7 +4,7 @@ This repository has three deliberately separate lanes:
 
 - `patch/`: guarded downstream portability profile, eight series and 40 source
   patches for `infiniti` only.
-- `build-patches/`: five guarded crDroid build-only overlays.
+- `build-patches/`: six guarded crDroid build-only overlays.
 - `los-fix-build-patches/`: four historical LineageOS-only compile fixes.
 
 The complete promoted build graph is published separately in
@@ -116,6 +116,11 @@ The libjxl graph overlays are deliberately limited to `libhwy` in
 `external/google-highway` and `libskia_skcms` in `external/skia`. They add only
 `vendor_available: true` so vendor `libjxl` can resolve its two static
 dependencies; `external/libjxl` itself is not patched.
+
+The DNG graph overlay removes only `vendor_available: true` from `libdng_sdk`.
+Android 16 DNG 1.7.1 links the core-only XMP toolkit, and the Infiniti graph has
+no vendor DNG consumer. The overlay does not expose `xmp_toolkit_sdk` or
+`zuid_md5` to vendor.
 
 For the retired Lineage lane, see
 [`los-fix-build-patches/README.md`](los-fix-build-patches/README.md). Do not mix

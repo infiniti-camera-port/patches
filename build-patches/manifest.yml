@@ -39,3 +39,13 @@ patches:
     expected_head: 22f5edb6c1bf350d1d9d67bb429db1a5539f3c05
     expected_base_sha256: 34e6b4422d174e36e9a91e282248b0efe98ad7172e90c4baf907314f68770550
     expected_applied_sha256: 296725556b988c69487b5eafa20f4673ee99e91692987598a4dac2e814431edd
+
+  - name: libdng-sdk-core-only
+    target_repo: external/dng_sdk
+    target_path: Android.bp
+    apply_order: 6
+    sha256: 69685f9d25be3de68277118ee5e8bc3da045034f6b1fe5ed214db772287db4f5
+    rationale: DNG 1.7.1 links the core-only XMP toolkit, so keep libdng_sdk core-only instead of creating an unused vendor closure.
+    expected_head: 60de57ba9f18dd6366914ad74580063fe102c87c
+    expected_base_sha256: e317f6e4150f83b3ffbc534924d232e90c77b805284f8fdcb554639ab6419b66
+    expected_applied_sha256: 435ffd6377e69a6a919f656a70f428117c81c566a9a12b89ed827023dbc4c664

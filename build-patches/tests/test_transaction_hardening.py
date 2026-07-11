@@ -124,7 +124,7 @@ class TransactionHardeningTests(unittest.TestCase):
         second = run_overlay(overlay, repo_root, apply=True)
         after_second = tuple(path.read_bytes() for path in repo_root.rglob("*") if path.is_file() and ".git" not in path.parts)
         self.assertEqual(second.returncode, 0, output_of(second))
-        self.assertEqual(output_of(second).count("ALREADY_APPLIED"), 5)
+        self.assertEqual(output_of(second).count("ALREADY_APPLIED"), 6)
         self.assertEqual(after_second, before_second)
 
 

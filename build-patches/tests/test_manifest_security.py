@@ -51,6 +51,33 @@ class ManifestSecurityTests(unittest.TestCase):
             "22f5edb6c1bf350d1d9d67bb429db1a5539f3c05",
         )
 
+    def test_dng_sdk_core_only_patch_is_required(self) -> None:
+        # Given the strict graph requires the Android 16 r4 core-only DNG layout.
+        expected = "libdng-sdk-core-only"
+        entries = parse_manifest(OVERLAY_DIR / "manifest.yml")
+
+        # When the guarded build-patch inventory is inspected.
+        by_name = {entry.name: entry for entry in entries}
+
+        # Then the exact DNG source and content guards must be mandatory.
+        self.assertIn(expected, REQUIRED_PATCHES)
+        self.assertIn(expected, by_name)
+        entry = by_name[expected]
+        self.assertEqual(entry.target_repo, "external/dng_sdk")
+        self.assertEqual(entry.target_path, "Android.bp")
+        self.assertEqual(entry.apply_order, 6)
+        self.assertEqual(entry.sha256, "69685f9d25be3de68277118ee5e8bc3da045034f6b1fe5ed214db772287db4f5")
+        self.assertEqual(entry.expected_head, "60de57ba9f18dd6366914ad74580063fe102c87c")
+        self.assertEqual(
+            entry.expected_base_sha256,
+            "e317f6e4150f83b3ffbc534924d232e90c77b805284f8fdcb554639ab6419b66",
+        )
+        self.assertEqual(
+            entry.expected_applied_sha256,
+            "435ffd6377e69a6a919f656a70f428117c81c566a9a12b89ed827023dbc4c664",
+        )
+        self.assertNotIn("external/XMP-Toolkit-SDK", {item.target_repo for item in entries})
+
     def test_duplicate_mapping_key_is_rejected(self) -> None:
         replace_manifest(
             self.overlay,
