@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Sat, 11 Jul 2026 16:55:00 -0600
+Subject: [PATCH] skcms: expose the static library to vendor modules
+
+libjxl is vendor-available and links libskia_skcms statically. Expose only the
+skcms library to the vendor image so Soong can create the required variant.
+---
+ Android.bp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Android.bp b/Android.bp
+--- a/Android.bp
++++ b/Android.bp
+@@ -1136,6 +1136,7 @@ rust_bindgen {
+ cc_library_static {
+     name: "libskia_skcms",
+     host_supported: true,
++    vendor_available: true,
+     sdk_version: "current",
+     srcs: [
+         "modules/skcms/skcms.cc",
+--
+2.49.0

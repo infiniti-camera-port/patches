@@ -4,7 +4,7 @@ This repository has three deliberately separate lanes:
 
 - `patch/`: guarded downstream portability profile, eight series and 40 source
   patches for `infiniti` only.
-- `build-patches/`: three guarded crDroid build-only overlays.
+- `build-patches/`: five guarded crDroid build-only overlays.
 - `los-fix-build-patches/`: four historical LineageOS-only compile fixes.
 
 The complete promoted build graph is published separately in
@@ -111,6 +111,11 @@ The first command validates state and reports whether each patch is forward- or
 reverse-applicable. It is not a compile or build gate. The second command stages
 all pending overlays before mutation and verifies rollback of invocation-owned
 changes on failure. A reported rollback failure requires manual recovery.
+
+The libjxl graph overlays are deliberately limited to `libhwy` in
+`external/google-highway` and `libskia_skcms` in `external/skia`. They add only
+`vendor_available: true` so vendor `libjxl` can resolve its two static
+dependencies; `external/libjxl` itself is not patched.
 
 For the retired Lineage lane, see
 [`los-fix-build-patches/README.md`](los-fix-build-patches/README.md). Do not mix

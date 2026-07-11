@@ -19,3 +19,23 @@ patches:
     apply_order: 3
     sha256: aa9d7cd73a0b339f2f5aa02cde6735ba3734085368ea28b6622e810c7c29bf85
     rationale: Clear PRODUCT_NOT_DEBUGGABLE_IN_USERDEBUG after common product inherits.
+
+  - name: libhwy-vendor-available
+    target_repo: external/google-highway
+    target_path: Android.bp
+    apply_order: 4
+    sha256: af4d37965ca8b04fd84d41e4ec60a6a57d366efbd9a45d0563d4a6b8b5a008c0
+    rationale: libjxl is vendor-available and statically links libhwy, so libhwy must expose the matching vendor/static variant.
+    expected_head: 12062ba78328dac793dcec57c63865ab480f1f18
+    expected_base_sha256: b15f48c4741b3d0197e3e84108aa74183e3519f6f54e6b64a646a78998aeefac
+    expected_applied_sha256: 64f02200d08d8ce4d9cfb4c92e1434419613df0756a290229e75f0ee8a330f2f
+
+  - name: libskia-skcms-vendor-available
+    target_repo: external/skia
+    target_path: Android.bp
+    apply_order: 5
+    sha256: 4eb171d386820d5f74f10c3944215e1bc26ca1550c17dba9611e5fc50303e4c4
+    rationale: libjxl is vendor-available and statically links libskia_skcms, so skcms must expose the matching vendor/static variant.
+    expected_head: 22f5edb6c1bf350d1d9d67bb429db1a5539f3c05
+    expected_base_sha256: 34e6b4422d174e36e9a91e282248b0efe98ad7172e90c4baf907314f68770550
+    expected_applied_sha256: 296725556b988c69487b5eafa20f4673ee99e91692987598a4dac2e814431edd

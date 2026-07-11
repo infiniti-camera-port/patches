@@ -13,13 +13,20 @@ REQUIRED_PATCHES: Final = frozenset(
         "allow-oplus-fwk-boot-jars",
         "restore-userdebug-variant",
         "device-not-debuggable-empty",
+        "libhwy-vendor-available",
+        "libskia-skcms-vendor-available",
     }
 )
-MANIFEST_KEYS: Final = frozenset(
+REQUIRED_MANIFEST_KEYS: Final = frozenset(
     {"name", "target_repo", "target_path", "apply_order", "sha256", "rationale"}
 )
+SOURCE_GUARD_KEYS: Final = frozenset(
+    {"expected_head", "expected_base_sha256", "expected_applied_sha256"}
+)
+MANIFEST_KEYS: Final = REQUIRED_MANIFEST_KEYS | SOURCE_GUARD_KEYS
 NAME_PATTERN: Final = re.compile(r"[a-z0-9][a-z0-9-]*\Z")
 SHA256_PATTERN: Final = re.compile(r"[0-9a-f]{64}\Z")
+COMMIT_PATTERN: Final = re.compile(r"[0-9a-f]{40}\Z")
 
 
 class ManifestError(Exception):
@@ -38,6 +45,9 @@ class BuildPatch(NamedTuple):
     apply_order: int
     sha256: str
     rationale: str
+    expected_head: str | None = None
+    expected_base_sha256: str | None = None
+    expected_applied_sha256: str | None = None
 
 
 class ResolvedPatch(NamedTuple):
@@ -80,7 +90,7 @@ def _parse_relative(value: str, field: str, index: int) -> str:
 
 
 def _build_entry(raw_entry: Mapping[str, str], index: int) -> BuildPatch:
-    missing = MANIFEST_KEYS - raw_entry.keys()
+    missing = REQUIRED_MANIFEST_KEYS - raw_entry.keys()
     if missing:
         raise ManifestError(f"entry {index}: missing keys {sorted(missing)}")
     try:
@@ -96,6 +106,17 @@ def _build_entry(raw_entry: Mapping[str, str], index: int) -> BuildPatch:
         raise ManifestError(f"entry {index}: sha256 must be a lowercase 64-character digest")
     if not rationale:
         raise ManifestError(f"entry {index}: empty rationale")
+    present_guards = SOURCE_GUARD_KEYS & raw_entry.keys()
+    if present_guards and present_guards != SOURCE_GUARD_KEYS:
+        raise ManifestError(f"entry {index}: source guards must be specified together")
+    expected_head = raw_entry.get("expected_head")
+    expected_base_sha256 = raw_entry.get("expected_base_sha256")
+    expected_applied_sha256 = raw_entry.get("expected_applied_sha256")
+    if expected_head is not None and COMMIT_PATTERN.fullmatch(expected_head) is None:
+        raise ManifestError(f"entry {index}: expected_head must be a lowercase 40-character commit")
+    source_hashes = (expected_base_sha256, expected_applied_sha256)
+    if any(value is not None and SHA256_PATTERN.fullmatch(value) is None for value in source_hashes):
+        raise ManifestError(f"entry {index}: source hashes must be lowercase 64-character digests")
     return BuildPatch(
         name=name,
         target_repo=_parse_relative(raw_entry["target_repo"], "target_repo", index),
@@ -103,6 +124,9 @@ def _build_entry(raw_entry: Mapping[str, str], index: int) -> BuildPatch:
         apply_order=apply_order,
         sha256=sha256,
         rationale=rationale,
+        expected_head=expected_head,
+        expected_base_sha256=expected_base_sha256,
+        expected_applied_sha256=expected_applied_sha256,
     )
 
 

@@ -41,6 +41,39 @@ PRODUCT_MANUFACTURER := OnePlus
 """
 }
 
+HIGHWAY_FILES = {
+    "Android.bp": """package {
+    default_applicable_licenses: ["external_highway_license"],
+}
+
+cc_library {
+    name: "libhwy",
+    host_supported: true,
+    sdk_version: "current",
+    stl: "c++_shared",
+    export_include_dirs: [
+        ".",
+    ],
+}
+"""
+}
+
+SKIA_FILES = {
+    "Android.bp": """rust_bindgen {
+    name: "libfontations_ffi_bridge_headers",
+}
+
+cc_library_static {
+    name: "libskia_skcms",
+    host_supported: true,
+    sdk_version: "current",
+    srcs: [
+        "modules/skcms/skcms.cc",
+    ],
+}
+"""
+}
+
 
 def run_command(arguments: list[str], *, cwd: Path, env: Mapping[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -54,7 +87,7 @@ def run_command(arguments: list[str], *, cwd: Path, env: Mapping[str, str] | Non
 
 
 def copy_overlay(destination: Path) -> Path:
-    return Path(
+    copied = Path(
         shutil.copytree(
             OVERLAY_DIR,
             destination,
@@ -62,6 +95,19 @@ def copy_overlay(destination: Path) -> Path:
             ignore=shutil.ignore_patterns("tests", "__pycache__"),
         )
     )
+    manifest = copied / "manifest.yml"
+    manifest.write_text(
+        "\n".join(
+            line
+            for line in manifest.read_text(encoding="utf-8").splitlines()
+            if not line.startswith(
+                ("    expected_head:", "    expected_base_sha256:", "    expected_applied_sha256:")
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return copied
 
 
 def initialize_repo(repo: Path, files: Mapping[str, str]) -> None:
@@ -77,8 +123,12 @@ def initialize_repo(repo: Path, files: Mapping[str, str]) -> None:
 def create_repo_root(root: Path) -> Path:
     soong = root / "build/soong"
     device = root / "device/oneplus/infiniti"
+    highway = root / "external/google-highway"
+    skia = root / "external/skia"
     initialize_repo(soong, SOONG_FILES)
     initialize_repo(device, DEVICE_FILES)
+    initialize_repo(highway, HIGHWAY_FILES)
+    initialize_repo(skia, SKIA_FILES)
     return root
 
 

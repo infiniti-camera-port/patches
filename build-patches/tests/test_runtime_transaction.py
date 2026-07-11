@@ -58,6 +58,8 @@ class RuntimeTransactionTests(unittest.TestCase):
             self.repo_root / "build/soong/scripts/check_boot_jars/package_allowed_list.txt",
             self.repo_root / "build/soong/scripts/gen_build_prop.py",
             self.repo_root / "device/oneplus/infiniti/lineage_infiniti.mk",
+            self.repo_root / "external/google-highway/Android.bp",
+            self.repo_root / "external/skia/Android.bp",
         )
         self.original_bytes = tuple(path.read_bytes() for path in self.target_paths)
 

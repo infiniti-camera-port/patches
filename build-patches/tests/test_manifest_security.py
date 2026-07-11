@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from support import (
+    OVERLAY_DIR,
     SOONG_FILES,
     copy_overlay,
     create_repo_root,
@@ -16,6 +17,8 @@ from support import (
     set_git_executable,
     write_git_wrapper,
 )
+
+from build_patch_manifest import REQUIRED_PATCHES, parse_manifest
 
 
 class ManifestSecurityTests(unittest.TestCase):
@@ -32,6 +35,21 @@ class ManifestSecurityTests(unittest.TestCase):
         result = run_overlay(self.overlay, self.repo_root)
         self.assertNotEqual(result.returncode, 0, output_of(result))
         self.assertIn(expected, output_of(result))
+
+    def test_libjxl_vendor_static_dependency_patches_are_required(self) -> None:
+        expected = {"libhwy-vendor-available", "libskia-skcms-vendor-available"}
+        entries = parse_manifest(OVERLAY_DIR / "manifest.yml")
+        self.assertTrue(expected <= REQUIRED_PATCHES)
+        by_name = {entry.name: entry for entry in entries}
+        self.assertTrue(expected <= by_name.keys())
+        self.assertEqual(
+            by_name["libhwy-vendor-available"].expected_head,
+            "12062ba78328dac793dcec57c63865ab480f1f18",
+        )
+        self.assertEqual(
+            by_name["libskia-skcms-vendor-available"].expected_head,
+            "22f5edb6c1bf350d1d9d67bb429db1a5539f3c05",
+        )
 
     def test_duplicate_mapping_key_is_rejected(self) -> None:
         replace_manifest(

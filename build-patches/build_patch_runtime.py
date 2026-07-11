@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import stat
@@ -211,6 +212,13 @@ def prepare_patches(resolved_patches: list[ResolvedPatch], git: GitClient) -> tu
                 f"{resolved.entry.name}: Git top-level mismatch expected {resolved.repo_path} got {top_level.stdout or top_level.stderr}"
             )
             continue
+        if resolved.entry.expected_head is not None:
+            head = git.run(["rev-parse", "HEAD"], resolved.repo_path)
+            if not head.ok or head.stdout != resolved.entry.expected_head:
+                actual_head = head.stdout or head.stderr
+                expected_head = resolved.entry.expected_head
+                errors.append(f"{resolved.entry.name}: source HEAD mismatch expected {expected_head} got {actual_head}")
+                continue
         forward = git.apply_check(resolved.repo_path, resolved.patch_bytes)
         reverse = git.apply_check(resolved.repo_path, resolved.patch_bytes, reverse=True)
         if forward.ok == reverse.ok:
@@ -221,6 +229,17 @@ def prepare_patches(resolved_patches: list[ResolvedPatch], git: GitClient) -> tu
             continue
         before = resolved.target_file.read_bytes()
         before_mode = _mode(resolved.target_file)
+        expected_sha = (
+            resolved.entry.expected_applied_sha256
+            if reverse.ok
+            else resolved.entry.expected_base_sha256
+        )
+        actual_sha = hashlib.sha256(before).hexdigest()
+        if expected_sha is not None and actual_sha != expected_sha:
+            errors.append(
+                f"{resolved.entry.name}: source content mismatch expected {expected_sha} got {actual_sha}"
+            )
+            continue
         if reverse.ok:
             prepared.append(PreparedPatch(resolved, False, before, before_mode, before, before_mode))
             continue

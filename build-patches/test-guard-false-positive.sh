@@ -9,10 +9,14 @@ repo_root="$scratch/repo"
 mkdir -p \
   "$repo_root/build/soong/scripts/check_boot_jars" \
   "$repo_root/build/soong/scripts" \
-  "$repo_root/device/oneplus/infiniti"
+  "$repo_root/device/oneplus/infiniti" \
+  "$repo_root/external/google-highway" \
+  "$repo_root/external/skia"
 
 git -C "$repo_root/build/soong" init -q
 git -C "$repo_root/device/oneplus/infiniti" init -q
+git -C "$repo_root/external/google-highway" init -q
+git -C "$repo_root/external/skia" init -q
 
 cat > "$repo_root/build/soong/scripts/check_boot_jars/package_allowed_list.txt" <<'EOF'
 com\.oplus\..*
@@ -30,6 +34,37 @@ com\.oplusx\..*
 
 # QC adds
 com.qualcomm.qti
+EOF
+
+cat > "$repo_root/external/google-highway/Android.bp" <<'EOF'
+package {
+    default_applicable_licenses: ["external_highway_license"],
+}
+
+cc_library {
+    name: "libhwy",
+    host_supported: true,
+    sdk_version: "current",
+    stl: "c++_shared",
+    export_include_dirs: [
+        ".",
+    ],
+}
+EOF
+
+cat > "$repo_root/external/skia/Android.bp" <<'EOF'
+rust_bindgen {
+    name: "libfontations_ffi_bridge_headers",
+}
+
+cc_library_static {
+    name: "libskia_skcms",
+    host_supported: true,
+    sdk_version: "current",
+    srcs: [
+        "modules/skcms/skcms.cc",
+    ],
+}
 EOF
 
 cat > "$repo_root/build/soong/scripts/gen_build_prop.py" <<'EOF'
