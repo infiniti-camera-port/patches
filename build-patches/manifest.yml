@@ -56,3 +56,24 @@ patches:
     apply_order: 7
     sha256: 87faaa9331fe34053d2791c0ad2ea1a8dbcd3e1e84ace2e1d754853cb3dc4f08
     rationale: Re-home OEM tiles with a null/empty category key (com.aiunit.aon EZ Pay, com.oplus.aiunit AI Service Engine) to advanced security so they stop leaking into every unregistered Settings subpage.
+
+  - name: device-not-debuggable-macan
+    target_repo: device/oneplus/macan
+    target_path: lineage_macan.mk
+    apply_order: 8
+    sha256: a20cdd480453c69e1ec495001c615d87286a48f620ef294b1c3b07efc72c1e50
+    rationale: Clear PRODUCT_NOT_DEBUGGABLE_IN_USERDEBUG after common product inherits so the macan userdebug build keeps ro.debuggable=1.
+
+  - name: device-not-debuggable-macanc
+    target_repo: device/oneplus/macanc
+    target_path: lineage_macanc.mk
+    apply_order: 9
+    sha256: 07126db9085b631fc546a12ed2196e5205f1cc711742bd1281e73f5926a76841
+    rationale: Clear PRODUCT_NOT_DEBUGGABLE_IN_USERDEBUG after common product inherits so the macanc userdebug build keeps ro.debuggable=1.
+
+  - name: device-not-debuggable-fairlady
+    target_repo: device/oneplus/fairlady
+    target_path: lineage_fairlady.mk
+    apply_order: 10
+    sha256: ec3d03250cbd733c27b4752986dae89188aa8bd09c71ec347db3d7e74d9e8f18
+    rationale: Clear PRODUCT_NOT_DEBUGGABLE_IN_USERDEBUG after common product inherits so the fairlady userdebug build keeps ro.debuggable=1.

@@ -1,0 +1,36 @@
+From b09252f9f885501b8b25efd82bc40022e4f53afe Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Sat, 25 Jul 2026 06:18:23 +0000
+Subject: [PATCH] macanc: clear PRODUCT_NOT_DEBUGGABLE_IN_USERDEBUG
+
+crDroid/Lineage set PRODUCT_NOT_DEBUGGABLE_IN_USERDEBUG to true in the common
+product config. Clear it after that inherit so add_json_bool emits false and
+the userdebug build keeps ro.debuggable=1.
+
+Change-Id: Ife5a80c0f0366cbbc49328e5dba69858b210b796
+---
+ lineage_macanc.mk | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/lineage_macanc.mk b/lineage_macanc.mk
+index 391bad2..a2ce397 100644
+--- a/lineage_macanc.mk
++++ b/lineage_macanc.mk
+@@ -14,6 +14,14 @@ $(call inherit-product, device/oneplus/macanc/device.mk)
+ # Inherit some common Lineage stuff.
+ $(call inherit-product, vendor/lineage/config/common_full_phone.mk)
+ 
++# Keep the userdebug build debuggable so adb root works out of the box.
++# crDroid/Lineage set PRODUCT_NOT_DEBUGGABLE_IN_USERDEBUG := true in common.mk,
++# forcing ro.debuggable=0 and hiding the rooted-debugging developer toggle.
++# add_json_bool treats any non-empty string as true, so ":= false" is still
++# truthy. Clear the var after the common inherit so the userdebug build stays
++# debuggable.
++PRODUCT_NOT_DEBUGGABLE_IN_USERDEBUG :=
++
+ PRODUCT_NAME := lineage_macanc
+ PRODUCT_DEVICE := macanc
+ PRODUCT_MANUFACTURER := OnePlus
+-- 
+2.25.1
+

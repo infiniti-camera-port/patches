@@ -17,6 +17,9 @@ REQUIRED_PATCHES: Final = frozenset(
         "libhwy-vendor-available",
         "libskia-skcms-vendor-available",
         "settings-rehome-oem-tiles",
+        "device-not-debuggable-macan",
+        "device-not-debuggable-macanc",
+        "device-not-debuggable-fairlady",
     }
 )
 REQUIRED_MANIFEST_KEYS: Final = frozenset(
