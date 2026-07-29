@@ -125,3 +125,18 @@ no vendor DNG consumer. The overlay does not expose `xmp_toolkit_sdk` or
 For the retired Lineage lane, see
 [`los-fix-build-patches/README.md`](los-fix-build-patches/README.md). Do not mix
 those four files into the crDroid build overlay or portable profile.
+
+## 16.0.9 staging topic status
+
+This branch is the `patches` member of the `staging/16.0.9` topic. It exists so
+the topic spans every repository it touches; it is not a consumer release.
+
+- `patch/` still describes the PROMOTED contract graph. Its `series` base/head
+  SHAs and `sync_only_prerequisites` do NOT match the `staging/16.0.9` pins, and
+  the profile is regenerated from the promoted graph only after the device-test
+  gate passes. Do not apply `patch/` against a staging sync.
+- `build-patches/` is graph-independent: each overlay is guarded by the target
+  file's own `sha256`, and the `expected_head` pins name external projects that
+  the 16.0.9 bump does not touch. This is the lane the staging build applies.
+- Nothing on this branch has been built, flashed, or runtime-validated. No
+  result should be inferred for any device.
