@@ -1,0 +1,55 @@
+From 88d9ca7c284aea974c970a96fb5d83d8d1216378 Mon Sep 17 00:00:00 2001
+From: Manikanta Kanamarlapudi <kmanikan@codeaurora.org>
+Date: Wed, 15 Jul 2026 21:13:11 +0000
+Subject: [PATCH 10/13] [upstream] libstagefright: add ACodec::createObserver
+ for AV extensions
+
+Make ACodec OMX-observer creation overridable via createObserver(), so the
+CLO AV extensions (and the OEM Oplus AV-enhancement chain, which imports
+android::ACodec::createObserver) can hook it. Factors the existing
+CodecObserver construction into a virtualizable factory method.
+
+Hand-adapted to A16: does NOT cherry-pick clean from ef5997b09c due to
+8-year ACodec.cpp divergence; committer applied the equivalent hunk.
+Attribution: original design = Manikanta Kanamarlapudi (CLO frameworks/av,
+ef5997b09c, "stagefright: Make classes customizable and add AV
+extensions"); A16 port = committer.
+
+Change-Id: I424aa01972aaf4ab71e0be4ec0ffbdf77f7b1e05
+(cherry picked from commit ae8f5919d0211899879b76a580dcf87449f0f2e8)
+---
+ media/libstagefright/ACodec.cpp                         | 7 +++++++
+ media/libstagefright/include/media/stagefright/ACodec.h | 2 ++
+ 2 files changed, 9 insertions(+)
+
+diff --git a/media/libstagefright/ACodec.cpp b/media/libstagefright/ACodec.cpp
+index d42fc5acf4..bb437c8e19 100644
+--- a/media/libstagefright/ACodec.cpp
++++ b/media/libstagefright/ACodec.cpp
+@@ -888,6 +888,13 @@ status_t ACodec::setPortMode(int32_t portIndex, IOMX::PortMode mode) {
+     return OK;
+ }
+ 
++sp<IOMXObserver> ACodec::createObserver() {
++    sp<AMessage> notify = new AMessage(kWhatOMXMessageList, this);
++    notify->setInt32("generation", this->mNodeGeneration + 1);
++    sp<CodecObserver> observer = new CodecObserver(notify);
++    return observer;
++}
++
+ status_t ACodec::allocateBuffersOnPort(OMX_U32 portIndex) {
+     CHECK(portIndex == kPortIndexInput || portIndex == kPortIndexOutput);
+ 
+diff --git a/media/libstagefright/include/media/stagefright/ACodec.h b/media/libstagefright/include/media/stagefright/ACodec.h
+index a4d82ab2b0..7ea804723d 100644
+--- a/media/libstagefright/include/media/stagefright/ACodec.h
++++ b/media/libstagefright/include/media/stagefright/ACodec.h
+@@ -339,6 +339,8 @@ private:
+     } mVendorExtensionsStatus;
+ 
+     status_t setCyclicIntraMacroblockRefresh(const sp<AMessage> &msg, int32_t mode);
++    sp<IOMXObserver> createObserver();
++
+     status_t allocateBuffersOnPort(OMX_U32 portIndex);
+     status_t freeBuffersOnPort(OMX_U32 portIndex);
+     status_t freeBuffer(OMX_U32 portIndex, size_t i);

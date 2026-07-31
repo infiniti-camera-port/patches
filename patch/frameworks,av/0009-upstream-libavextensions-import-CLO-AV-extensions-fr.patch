@@ -1,0 +1,1847 @@
+From 837b71146bdd13ceac59d76cfe1f2572d58117b3 Mon Sep 17 00:00:00 2001
+From: Manikanta Kanamarlapudi <kmanikan@codeaurora.org>
+Date: Wed, 15 Jul 2026 21:11:05 +0000
+Subject: [PATCH 09/13] [upstream] libavextensions: import CLO AV extensions
+ framework
+
+Import the Qualcomm/CLO AVExtensions framework (media/libavextensions/):
+static libs libavextensions (AVFactory/AVUtils/ExtendedMediaDefs),
+libavmediaextentions (AVMediaUtils) and libavmediaserviceextensions
+(AVMediaServiceFactory/AVNuFactory/AVNuUtils). Stock AOSP frameworks/av
+lacks these; the OEM Oplus AV-enhancement chain (libavenhancements ->
+liboplusavenhancements -> OplusCCodec) imports their symbols.
+
+Provenance: CLO platform/frameworks/av. Foundational commit ef5997b09c
+"stagefright: Make classes customizable and add AV extensions" (Manikanta
+Kanamarlapudi, 2018-01-18); imported at tip 47c53dbf06 (2026-07-03). This
+subtree is the cumulative state of 53 CLO commits (2018->2026); a literal
+per-commit cherry-pick replay onto this A16 tree is not clean (8 years of
+cross-file divergence in the shared files those commits also touch), so it
+is imported at tip state with the original authorship preserved (--author)
+and provenance cited here. Purely additive: no existing file is modified.
+
+Note: commits 1-4 of this series are provenance-layering (the raw upstream
+import); they are not individually buildable on A16. Build-verification
+lands at [OURS] commit 5 (static libs compile), commits 6-8 (libstagefright/
+libmediaplayerservice/codec2 wiring + symbol export) and the series tip,
+all under the bp4a release config.
+
+Source: git.codelinaro.org/clo/la/platform/frameworks/av @ 47c53dbf06
+Change-Id: I71484d645234cbbf7e627df7919e0b157dd7e629
+(cherry picked from commit 2eda64ccafeef64bcc137c37da8157f4fd7e2725)
+---
+ media/libavextensions/Android.bp              | 177 +++++++++++++
+ .../common/AVExtensionsCommon.h               |  66 +++++
+ .../common/ExtensionsLoader.hpp               |  96 +++++++
+ .../libavextensions/media/AVMediaExtensions.h |  58 +++++
+ media/libavextensions/media/AVMediaUtils.cpp  |  63 +++++
+ .../AVMediaServiceExtensions.h                |  96 +++++++
+ .../AVMediaServiceFactory.cpp                 |  78 ++++++
+ .../AVMediaServiceUtils.cpp                   | 108 ++++++++
+ .../mediaplayerservice/AVNuExtensions.h       |  94 +++++++
+ .../mediaplayerservice/AVNuFactory.cpp        |  91 +++++++
+ .../mediaplayerservice/AVNuUtils.cpp          |  93 +++++++
+ .../stagefright/AVExtensions.h                | 240 ++++++++++++++++++
+ .../libavextensions/stagefright/AVFactory.cpp | 142 +++++++++++
+ media/libavextensions/stagefright/AVUtils.cpp | 211 +++++++++++++++
+ .../stagefright/ExtendedMediaDefs.cpp         |  80 ++++++
+ 15 files changed, 1693 insertions(+)
+ create mode 100644 media/libavextensions/Android.bp
+ create mode 100644 media/libavextensions/common/AVExtensionsCommon.h
+ create mode 100644 media/libavextensions/common/ExtensionsLoader.hpp
+ create mode 100644 media/libavextensions/media/AVMediaExtensions.h
+ create mode 100644 media/libavextensions/media/AVMediaUtils.cpp
+ create mode 100644 media/libavextensions/mediaplayerservice/AVMediaServiceExtensions.h
+ create mode 100644 media/libavextensions/mediaplayerservice/AVMediaServiceFactory.cpp
+ create mode 100644 media/libavextensions/mediaplayerservice/AVMediaServiceUtils.cpp
+ create mode 100644 media/libavextensions/mediaplayerservice/AVNuExtensions.h
+ create mode 100644 media/libavextensions/mediaplayerservice/AVNuFactory.cpp
+ create mode 100644 media/libavextensions/mediaplayerservice/AVNuUtils.cpp
+ create mode 100644 media/libavextensions/stagefright/AVExtensions.h
+ create mode 100644 media/libavextensions/stagefright/AVFactory.cpp
+ create mode 100644 media/libavextensions/stagefright/AVUtils.cpp
+ create mode 100644 media/libavextensions/stagefright/ExtendedMediaDefs.cpp
+
+diff --git a/media/libavextensions/Android.bp b/media/libavextensions/Android.bp
+new file mode 100644
+index 0000000000..980c5faf0d
+--- /dev/null
++++ b/media/libavextensions/Android.bp
+@@ -0,0 +1,177 @@
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++// AV  media utils extention
++// ########################################################
++
++cc_library_static {
++    name: "libavmediaextentions",
++    srcs: ["media/AVMediaUtils.cpp"],
++    shared_libs: [
++        "libhidlbase",
++        "liblog",
++        "libcutils",
++        "libutils",
++    ],
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++// QTI_BEGIN: 2018-05-04: Video: libstagefirght:change way of accessing aosp project headers
++    header_libs:[
++        "media_plugin_headers",
++        "libbase_headers",
++// QTI_END: 2018-05-04: Video: libstagefirght:change way of accessing aosp project headers
++        "libaudioclient_headers",
++        "libmedia_headers",
++        "libmediametrics_headers",
++// QTI_BEGIN: 2018-05-04: Video: libstagefirght:change way of accessing aosp project headers
++    ],
++
++// QTI_END: 2018-05-04: Video: libstagefirght:change way of accessing aosp project headers
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++    include_dirs: [
++        "frameworks/av/media/libavextensions",
++        "external/flac/include",
++    ],
++    cflags: [
++        "-Wno-multichar",
++        "-Werror",
++    ],
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++// QTI_BEGIN: 2019-02-19: Video: media: Enable CFI in libavextensions
++    sanitize: {
++        cfi: true,
++    },
++// QTI_END: 2019-02-19: Video: media: Enable CFI in libavextensions
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++}
++
++cc_library_static {
++    name: "libavextensions",
++    srcs: [
++         "stagefright/ExtendedMediaDefs.cpp",
++         "stagefright/AVUtils.cpp",
++         "stagefright/AVFactory.cpp",
++    ],
++    shared_libs: [
++         "libhidlbase",
++         "liblog",
++         "libui",
++         "libgui",
++         "libcutils",
++         "libutils",
++         "libmediadrm",
++         "libnativewindow",
++         "libcrypto",
++         "android.hardware.media.omx@1.0",
++         "libhidlbase",
++         "libhidlmemory",
++         "libaudioclient",
++         "android.hidl.allocator@1.0",
++         "android.hidl.memory@1.0",
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++         "libcamera_client",
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++    ],
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++// QTI_BEGIN: 2018-05-04: Video: libstagefirght:change way of accessing aosp project headers
++    header_libs:[
++// QTI_END: 2018-05-04: Video: libstagefirght:change way of accessing aosp project headers
++        "media_ndk_headers",
++// QTI_BEGIN: 2018-05-04: Video: libstagefirght:change way of accessing aosp project headers
++        "media_plugin_headers",
++        "libbase_headers",
++        "libstagefright_headers",
++// QTI_END: 2018-05-04: Video: libstagefirght:change way of accessing aosp project headers
++        "libmedia_headers",
++        "libmediametrics_headers",
++// QTI_BEGIN: 2018-05-04: Video: libstagefirght:change way of accessing aosp project headers
++    ],
++// QTI_END: 2018-05-04: Video: libstagefirght:change way of accessing aosp project headers
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++    include_dirs: [
++        "frameworks/av/media/libmediaextractor",
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++        "frameworks/av/media/module/mpeg2ts",
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++        "frameworks/av/media/libavextensions",
++        "external/flac/include",
++        "frameworks/av/media/libstagefright/omx/include/media/stagefright",
++    ],
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++    static_libs: [
++        "libstagefright_mpeg2support_nocrypto",
++    ],
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++    cflags: [
++        "-Wno-multichar",
++        "-Werror",
++    ],
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++// QTI_BEGIN: 2019-02-19: Video: media: Enable CFI in libavextensions
++    sanitize: {
++        cfi: true,
++    },
++// QTI_END: 2019-02-19: Video: media: Enable CFI in libavextensions
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++}
++
++cc_library_static {
++    name: "libavmediaserviceextensions",
++    srcs: [
++         "mediaplayerservice/AVMediaServiceFactory.cpp",
++         "mediaplayerservice/AVMediaServiceUtils.cpp",
++         "mediaplayerservice/AVNuFactory.cpp",
++         "mediaplayerservice/AVNuUtils.cpp",
++    ],
++    shared_libs: [
++        "libhidlbase",
++        "liblog",
++        "libui",
++        "libgui",
++        "libcutils",
++        "libutils",
++        "libmediadrm",
++        "libnativewindow",
++        "libstagefright",
++        "android.hardware.media.omx@1.0",
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++        "libdatasource",
++        "libcamera_client",
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++    ],
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++// QTI_BEGIN: 2018-05-04: Video: libstagefirght:change way of accessing aosp project headers
++    header_libs:[
++        "media_plugin_headers",
++        "libbase_headers",
++        "libstagefright_headers",
++// QTI_END: 2018-05-04: Video: libstagefirght:change way of accessing aosp project headers
++        "libmediadrm_headers",
++        "libmediametrics_headers",
++        "libmediautils_headers",
++        "libstagefright_rtsp_headers",
++// QTI_BEGIN: 2018-05-04: Video: libstagefirght:change way of accessing aosp project headers
++    ],
++// QTI_END: 2018-05-04: Video: libstagefirght:change way of accessing aosp project headers
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++    include_dirs: [
++        "frameworks/av/media/libmediaplayerservice",
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++        "frameworks/av/media/libmediaplayerservice/nuplayer/include",
++// QTI_BEGIN: 2018-02-19: Audio: frameworks/av: enable audio extended features
++        "frameworks/av/media/libmediaextractor",
++// QTI_END: 2018-02-19: Audio: frameworks/av: enable audio extended features
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++        "frameworks/av/media/libavextensions",
++        "external/flac/include",
++    ],
++    cflags: [
++        "-Wno-multichar",
++        "-Werror",
++    ],
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++// QTI_BEGIN: 2019-02-19: Video: media: Enable CFI in libavextensions
++    sanitize: {
++        cfi: true,
++    },
++// QTI_END: 2019-02-19: Video: media: Enable CFI in libavextensions
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++}
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
+diff --git a/media/libavextensions/common/AVExtensionsCommon.h b/media/libavextensions/common/AVExtensionsCommon.h
+new file mode 100644
+index 0000000000..3c1d56a01a
+--- /dev/null
++++ b/media/libavextensions/common/AVExtensionsCommon.h
+@@ -0,0 +1,66 @@
++/*
++ * Copyright (c) 2013 - 2018, The Linux Foundation. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are
++ * met:
++ *     * Redistributions of source code must retain the above copyright
++ *      notice, this list of conditions and the following disclaimer.
++ *     * Redistributions in binary form must reproduce the above
++ *       copyright notice, this list of conditions and the following
++ *       disclaimer in the documentation and/or other materials provided
++ *      with the distribution.
++ *     * Neither the name of The Linux Foundation nor the names of its
++ *      contributors may be used to endorse or promote products derived
++ *       from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
++ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
++ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
++ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
++ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
++ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++#ifndef _AV_EXTENSIONS_COMMON_H_
++#define _AV_EXTENSIONS_COMMON_H_
++
++namespace android {
++
++static const char * CUSTOMIZATION_LIB_NAME = "libavenhancements.so";
++
++template <typename T>
++struct ExtensionsLoader {
++
++    static T *createInstance(const char *createFunctionName);
++
++private:
++    static void loadLib();
++    static void *mLibHandle;
++};
++
++/*
++ * Boiler-plate to declare the class as a singleton (with a static getter)
++ * which can be loaded (dlopen'd) via ExtensionsLoader
++ */
++#define DECLARE_LOADABLE_SINGLETON(className)   \
++protected:                                      \
++    className();                                \
++    virtual ~className();                       \
++    static className *sInst;                    \
++private:                                        \
++    className(const className&);                \
++    className &operator=(className &);          \
++public:                                         \
++    static className *get() {                   \
++        return sInst;                           \
++    }                                           \
++    friend struct ExtensionsLoader<className>;
++
++} //namespace android
++
++#endif // _AV_EXTENSIONS_COMMON_H_
+diff --git a/media/libavextensions/common/ExtensionsLoader.hpp b/media/libavextensions/common/ExtensionsLoader.hpp
+new file mode 100644
+index 0000000000..cffe0c7a90
+--- /dev/null
++++ b/media/libavextensions/common/ExtensionsLoader.hpp
+@@ -0,0 +1,96 @@
++//  QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++/*
++ * Copyright (c) 2013 - 2018, The Linux Foundation. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are
++ * met:
++ *     * Redistributions of source code must retain the above copyright
++ *      notice, this list of conditions and the following disclaimer.
++ *     * Redistributions in binary form must reproduce the above
++ *       copyright notice, this list of conditions and the following
++ *       disclaimer in the documentation and/or other materials provided
++ *      with the distribution.
++ *     * Neither the name of The Linux Foundation nor the names of its
++ *      contributors may be used to endorse or promote products derived
++ *       from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
++ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
++ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
++ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
++ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
++ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++#include <dlfcn.h>
++#include <common/AVExtensionsCommon.h>
++
++namespace android {
++
++/*
++ * Create strongly-typed objects of type T
++ * If the customization library exists and does contain a "named" constructor,
++ *  invoke and create an instance
++ * Else create the object of type T itself
++ *
++ * Contains a static instance to dlopen'd library, But may end up
++ * opening the library mutiple times. Following snip from dlopen man page is
++ * reassuring "...Only a single copy of an object file is brought into the
++ * address space, even if dlopen() is invoked multiple times in reference to
++ * the file, and even if different pathnames are used to reference the file.."
++ */
++
++template <typename T>
++T *ExtensionsLoader<T>::createInstance(const char *createFunctionName) {
++        ALOGV("createInstance(%lubit) : %s", (unsigned long)sizeof(intptr_t)*8, createFunctionName);
++        // create extended object if extensions-lib is available
++//  QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++//  QTI_BEGIN: 2019-02-19: Video: AVExtensions: Fix CFI warning
++        using CreateFunc_t = T*(*)(void);
++
++        CreateFunc_t createFunc = nullptr;
++
++        loadLib();
++        if (mLibHandle) {
++            createFunc = (CreateFunc_t)::dlsym(mLibHandle, createFunctionName);
++            if (!createFunc) {
++                ALOGW("symbol %s not found:  %s",createFunctionName, dlerror());
++            }
++        }
++
++//  QTI_END: 2019-02-19: Video: AVExtensions: Fix CFI warning
++//  QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++        if (createFunc) {
++//  QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++//  QTI_BEGIN: 2019-02-19: Video: AVExtensions: Fix CFI warning
++            return (*createFunc)();
++//  QTI_END: 2019-02-19: Video: AVExtensions: Fix CFI warning
++//  QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++        }
++        // Else, create the default object
++        return new T;
++}
++
++template <typename T>
++void ExtensionsLoader<T>::loadLib() {
++        if (!mLibHandle) {
++            mLibHandle = ::dlopen(CUSTOMIZATION_LIB_NAME, RTLD_LAZY);
++            if (!mLibHandle) {
++                ALOGV("%s", dlerror());
++                return;
++            }
++            ALOGV("Opened %s", CUSTOMIZATION_LIB_NAME);
++        }
++}
++
++//static
++template <typename T>
++void *ExtensionsLoader<T>::mLibHandle = NULL;
++
++} //namespace android
++//  QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
+diff --git a/media/libavextensions/media/AVMediaExtensions.h b/media/libavextensions/media/AVMediaExtensions.h
+new file mode 100644
+index 0000000000..1ed37d35a9
+--- /dev/null
++++ b/media/libavextensions/media/AVMediaExtensions.h
+@@ -0,0 +1,58 @@
++/*
++ * Copyright (c) 2013 - 2018, The Linux Foundation. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are
++ * met:
++ *     * Redistributions of source code must retain the above copyright
++ *      notice, this list of conditions and the following disclaimer.
++ *     * Redistributions in binary form must reproduce the above
++ *       copyright notice, this list of conditions and the following
++ *       disclaimer in the documentation and/or other materials provided
++ *      with the distribution.
++ *     * Neither the name of The Linux Foundation nor the names of its
++ *      contributors may be used to endorse or promote products derived
++ *       from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
++ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
++ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
++ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
++ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
++ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#ifndef _AV_MEDIA_EXTENSIONS_H_
++#define _AV_MEDIA_EXTENSIONS_H_
++
++#include <common/AVExtensionsCommon.h>
++#include <hardware/audio.h>
++
++namespace android {
++
++class MediaRecorder;
++/*
++ * Common delegate to the classes in libstagefright
++ */
++struct AVMediaUtils {
++
++
++    virtual size_t AudioTrackGetOffloadFrameCount(size_t frameCount);
++
++    virtual bool AudioTrackIsTrackOffloaded(audio_io_handle_t /*output*/);
++
++    virtual void getCustomProfileLocation(char *, int32_t);
++
++    // ----- NO TRESSPASSING BEYOND THIS LINE ------
++    DECLARE_LOADABLE_SINGLETON(AVMediaUtils);
++};
++
++} //namespace android
++
++#endif //_AV_MEDIA_EXTENSIONS_H_
++
+diff --git a/media/libavextensions/media/AVMediaUtils.cpp b/media/libavextensions/media/AVMediaUtils.cpp
+new file mode 100644
+index 0000000000..147a57b399
+--- /dev/null
++++ b/media/libavextensions/media/AVMediaUtils.cpp
+@@ -0,0 +1,63 @@
++/*
++ * Copyright (c) 2013 - 2018, The Linux Foundation. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are
++ * met:
++ *     * Redistributions of source code must retain the above copyright
++ *      notice, this list of conditions and the following disclaimer.
++ *     * Redistributions in binary form must reproduce the above
++ *       copyright notice, this list of conditions and the following
++ *       disclaimer in the documentation and/or other materials provided
++ *      with the distribution.
++ *     * Neither the name of The Linux Foundation nor the names of its
++ *      contributors may be used to endorse or promote products derived
++ *       from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
++ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
++ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
++ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
++ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
++ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++//#define LOG_NDEBUG 0
++#define LOG_TAG "AVMediaUtils"
++#include <utils/Log.h>
++
++#include "common/ExtensionsLoader.hpp"
++#include "media/AVMediaExtensions.h"
++
++namespace android {
++
++size_t AVMediaUtils::AudioTrackGetOffloadFrameCount(size_t frameCount) {
++    return frameCount;
++}
++
++bool AVMediaUtils::AudioTrackIsTrackOffloaded(audio_io_handle_t output __unused) {
++    return false;
++}
++
++void AVMediaUtils::getCustomProfileLocation(char *, int32_t) {
++    return;
++}
++
++// ----- NO TRESSPASSING BEYOND THIS LINE ------
++AVMediaUtils::AVMediaUtils() {
++}
++
++AVMediaUtils::~AVMediaUtils() {
++}
++
++//static
++AVMediaUtils *AVMediaUtils::sInst =
++        ExtensionsLoader<AVMediaUtils>::createInstance("createExtendedMediaUtils");
++
++} //namespace android
++
+diff --git a/media/libavextensions/mediaplayerservice/AVMediaServiceExtensions.h b/media/libavextensions/mediaplayerservice/AVMediaServiceExtensions.h
+new file mode 100644
+index 0000000000..1180bd8379
+--- /dev/null
++++ b/media/libavextensions/mediaplayerservice/AVMediaServiceExtensions.h
+@@ -0,0 +1,96 @@
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++/*
++ * Copyright (c) 2013 - 2018, The Linux Foundation. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are
++ * met:
++ *     * Redistributions of source code must retain the above copyright
++ *      notice, this list of conditions and the following disclaimer.
++ *     * Redistributions in binary form must reproduce the above
++ *       copyright notice, this list of conditions and the following
++ *       disclaimer in the documentation and/or other materials provided
++ *      with the distribution.
++ *     * Neither the name of The Linux Foundation nor the names of its
++ *      contributors may be used to endorse or promote products derived
++ *       from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
++ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
++ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
++ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
++ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
++ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++#ifndef _AV_MEDIA_SERVICE_EXTENSIONS_H_
++#define _AV_MEDIA_SERVICE_EXTENSIONS_H_
++
++#include <common/AVExtensionsCommon.h>
++#include <MediaPlayerFactory.h>
++
++#include <utils/List.h>
++#include <utils/RefBase.h>
++#include <utils/String16.h>
++
++#include <media/Metadata.h>
++
++namespace android {
++
++struct StagefrightRecorder;
++struct ARTSPConnection;
++struct ARTPConnection;
++struct AString;
++struct MyHandler;
++struct ABuffer;
++
++/*
++ * Factory to create objects of base-classes in libmediaplayerservice
++ */
++struct AVMediaServiceFactory {
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++    virtual StagefrightRecorder *createStagefrightRecorder(const content::AttributionSourceState& attributionSourcce);
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++
++    // RTSP extensions
++    virtual sp<ARTSPConnection> createARTSPConnection(bool uidValid, uid_t uid);
++    virtual sp<ARTPConnection> createARTPConnection();
++
++    // ----- NO TRESSPASSING BEYOND THIS LINE ------
++    DECLARE_LOADABLE_SINGLETON(AVMediaServiceFactory);
++};
++
++/*
++ * Common delegate to the classes in libmediaplayerservice
++ */
++struct AVMediaServiceUtils {
++
++    // RTSP IPV6 utils
++    virtual bool pokeAHole(sp<MyHandler> handler, int rtpSocket, int rtcpSocket,
++            const AString &transport, const AString &sessionHost);
++    virtual void makePortPair(int *rtpSocket, int *rtcpSocket, unsigned *rtpPort,
++            bool isIPV6);
++    virtual const char* parseURL(AString *host);
++    // RTSP customization utils
++    virtual bool parseTrackURL(AString url, AString val);
++    virtual void appendRange(AString *request);
++    virtual void setServerTimeoutUs(int64_t timeout);
++    virtual void appendMeta(media::Metadata *meta);
++    virtual bool checkNPTMapping(uint32_t *rtpInfoTime, int64_t *playTimeUs,
++            bool *nptValid, uint32_t rtpTime);
++    virtual void addH263AdvancedPacket(const sp<ABuffer> &buffer,
++            List<sp<ABuffer>> *packets, uint32_t rtpTime);
++    virtual bool parseNTPRange(const char *s, float *npt1, float *npt2);
++
++    // ----- NO TRESSPASSING BEYOND THIS LINE ------
++    DECLARE_LOADABLE_SINGLETON(AVMediaServiceUtils);
++};
++
++}
++
++#endif // _AV_EXTENSIONS__H_
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
+diff --git a/media/libavextensions/mediaplayerservice/AVMediaServiceFactory.cpp b/media/libavextensions/mediaplayerservice/AVMediaServiceFactory.cpp
+new file mode 100644
+index 0000000000..b7cf0ab938
+--- /dev/null
++++ b/media/libavextensions/mediaplayerservice/AVMediaServiceFactory.cpp
+@@ -0,0 +1,78 @@
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++/*
++ * Copyright (c) 2013 - 2018, The Linux Foundation. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are
++ * met:
++ *     * Redistributions of source code must retain the above copyright
++ *      notice, this list of conditions and the following disclaimer.
++ *     * Redistributions in binary form must reproduce the above
++ *       copyright notice, this list of conditions and the following
++ *       disclaimer in the documentation and/or other materials provided
++ *      with the distribution.
++ *     * Neither the name of The Linux Foundation nor the names of its
++ *      contributors may be used to endorse or promote products derived
++ *       from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
++ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
++ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
++ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
++ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
++ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#define LOG_TAG "AVMediaServiceFactory"
++#include <utils/Log.h>
++
++#include <media/stagefright/foundation/ADebug.h>
++#include <media/stagefright/foundation/AMessage.h>
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++#include <media/stagefright/rtsp/ARTPConnection.h>
++#include <media/stagefright/rtsp/ARTSPConnection.h>
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++
++#include "MediaRecorderClient.h"
++#include "MediaPlayerService.h"
++#include "StagefrightRecorder.h"
++
++#include "common/ExtensionsLoader.hpp"
++#include "mediaplayerservice/AVMediaServiceExtensions.h"
++
++namespace android {
++StagefrightRecorder *AVMediaServiceFactory::createStagefrightRecorder(
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++        const AttributionSourceState& attributionSourcce) {
++    return new StagefrightRecorder(attributionSourcce);
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++}
++
++sp<ARTSPConnection> AVMediaServiceFactory::createARTSPConnection(
++        bool uidValid, uid_t uid) {
++    return new ARTSPConnection(uidValid, uid);
++}
++
++sp<ARTPConnection> AVMediaServiceFactory::createARTPConnection() {
++    return new ARTPConnection();
++}
++
++// ----- NO TRESSPASSING BEYOND THIS LINE ------
++AVMediaServiceFactory::AVMediaServiceFactory() {
++}
++
++AVMediaServiceFactory::~AVMediaServiceFactory() {
++}
++
++//static
++AVMediaServiceFactory *AVMediaServiceFactory::sInst =
++        ExtensionsLoader<AVMediaServiceFactory>::createInstance("createExtendedMediaServiceFactory");
++
++} //namespace android
++
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
+diff --git a/media/libavextensions/mediaplayerservice/AVMediaServiceUtils.cpp b/media/libavextensions/mediaplayerservice/AVMediaServiceUtils.cpp
+new file mode 100644
+index 0000000000..64a2650177
+--- /dev/null
++++ b/media/libavextensions/mediaplayerservice/AVMediaServiceUtils.cpp
+@@ -0,0 +1,108 @@
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++/*
++ * Copyright (c) 2013 - 2018, The Linux Foundation. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are
++ * met:
++ *     * Redistributions of source code must retain the above copyright
++ *      notice, this list of conditions and the following disclaimer.
++ *     * Redistributions in binary form must reproduce the above
++ *       copyright notice, this list of conditions and the following
++ *       disclaimer in the documentation and/or other materials provided
++ *      with the distribution.
++ *     * Neither the name of The Linux Foundation nor the names of its
++ *      contributors may be used to endorse or promote products derived
++ *       from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
++ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
++ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
++ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
++ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
++ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#define LOG_TAG "AVMediaServiceUtils"
++//#define LOG_NDEBUG 0
++#include <utils/Log.h>
++
++#include <media/stagefright/foundation/ADebug.h>
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++#include <media/stagefright/rtsp/ARTPConnection.h>
++#include <media/stagefright/rtsp/ASessionDescription.h>
++#include <media/stagefright/rtsp/MyHandler.h>
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++
++#include "common/ExtensionsLoader.hpp"
++#include "mediaplayerservice/AVMediaServiceExtensions.h"
++
++namespace android {
++
++bool AVMediaServiceUtils::pokeAHole(sp<MyHandler> handler, int rtpSocket, int rtcpSocket,
++        const AString &transport, const AString &/*sessionHost*/) {
++    if (handler == NULL) {
++        ALOGW("MyHandler is NULL");
++        return false;
++    }
++    return handler->pokeAHole(rtpSocket, rtcpSocket, transport);
++}
++
++void AVMediaServiceUtils::makePortPair(int *rtpSocket, int *rtcpSocket, unsigned *rtpPort,
++        bool /*isIPV6*/) {
++    return ARTPConnection::MakePortPair(rtpSocket, rtcpSocket, rtpPort);
++}
++
++const char* AVMediaServiceUtils::parseURL(AString *host) {
++    return strchr(host->c_str(), ':');
++}
++
++bool AVMediaServiceUtils::parseTrackURL(AString /*url*/, AString /*val*/) {
++    return false;
++}
++
++void AVMediaServiceUtils::appendRange(AString * /*request*/) {
++    return;
++}
++
++void AVMediaServiceUtils::setServerTimeoutUs(int64_t /*timeout*/) {
++    return;
++}
++
++void AVMediaServiceUtils::addH263AdvancedPacket(const sp<ABuffer> &/*buffer*/,
++        List<sp<ABuffer>> * /*packets*/, uint32_t /*rtpTime*/) {
++    return;
++}
++
++void AVMediaServiceUtils::appendMeta(media::Metadata * /*meta*/) {
++    return;
++}
++
++bool AVMediaServiceUtils::checkNPTMapping(uint32_t * /*rtpInfoTime*/, int64_t * /*playTimeUs*/,
++        bool * /*nptValid*/, uint32_t /*rtpTime*/) {
++    return false;
++}
++
++bool AVMediaServiceUtils::parseNTPRange(const char *s, float *npt1, float *npt2) {
++    return ASessionDescription::parseNTPRange(s, npt1, npt2);
++}
++
++// ----- NO TRESSPASSING BEYOND THIS LINE ------
++AVMediaServiceUtils::AVMediaServiceUtils() {
++}
++
++AVMediaServiceUtils::~AVMediaServiceUtils() {
++}
++
++//static
++AVMediaServiceUtils *AVMediaServiceUtils::sInst =
++        ExtensionsLoader<AVMediaServiceUtils>::createInstance("createExtendedMediaServiceUtils");
++
++} //namespace android
++
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
+diff --git a/media/libavextensions/mediaplayerservice/AVNuExtensions.h b/media/libavextensions/mediaplayerservice/AVNuExtensions.h
+new file mode 100644
+index 0000000000..6e5941eb03
+--- /dev/null
++++ b/media/libavextensions/mediaplayerservice/AVNuExtensions.h
+@@ -0,0 +1,94 @@
++/*
++ * Copyright (c) 2013 - 2018, The Linux Foundation. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are
++ * met:
++ *     * Redistributions of source code must retain the above copyright
++ *      notice, this list of conditions and the following disclaimer.
++ *     * Redistributions in binary form must reproduce the above
++ *       copyright notice, this list of conditions and the following
++ *       disclaimer in the documentation and/or other materials provided
++ *      with the distribution.
++ *     * Neither the name of The Linux Foundation nor the names of its
++ *      contributors may be used to endorse or promote products derived
++ *       from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
++ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
++ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
++ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
++ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
++ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++#ifndef _AV_NU_EXTENSIONS_H_
++#define _AV_NU_EXTENSIONS_H_
++
++#include <common/AVExtensionsCommon.h>
++#include <media/MediaCodecBuffer.h>
++#include <media/stagefright/MediaCodec.h>
++
++namespace android {
++
++struct NuPlayer;
++
++/*
++ * Factory to create extended NuPlayer objects
++ */
++struct AVNuFactory {
++    virtual sp<NuPlayer> createNuPlayer(pid_t pid, const sp<MediaClock> &mediaClock);
++
++    virtual sp<NuPlayer::DecoderBase> createPassThruDecoder(
++            const sp<AMessage> &notify,
++            const sp<NuPlayer::Source> &source,
++            const sp<NuPlayer::Renderer> &renderer);
++
++    virtual sp<NuPlayer::DecoderBase> createDecoder(
++            const sp<AMessage> &notify,
++            const sp<NuPlayer::Source> &source,
++            pid_t pid,
++            uid_t uid,
++            const sp<NuPlayer::Renderer> &renderer);
++
++    virtual sp<NuPlayer::Renderer> createRenderer(
++            const sp<MediaPlayerBase::AudioSink> &sink,
++            const sp<MediaClock> &mediaClock,
++            const sp<AMessage> &notify,
++            uint32_t flags);
++
++    // ----- NO TRESSPASSING BEYOND THIS LINE ------
++    DECLARE_LOADABLE_SINGLETON(AVNuFactory);
++};
++
++/*
++ * Common delegate to the classes in NuPlayer
++ */
++struct AVNuUtils {
++    virtual bool isVorbisFormat(const sp<MetaData> &);
++
++    virtual void printFileName(int fd);
++    virtual bool dropCorruptFrame();
++    virtual void setCodecOutputFormat(const sp<AMessage> &);
++    virtual bool isByteStreamModeEnabled(const sp<MetaData> &);
++    virtual void overWriteAudioOutputFormat(sp <AMessage> &dst, const sp <AMessage> &src);
++    virtual bool pcmOffloadException(const sp<AMessage> &);
++    virtual uint32_t getFlags();
++    virtual audio_format_t getPCMFormat(const sp<AMessage> &);
++    virtual void checkFormatChange(bool *formatChange, const sp<ABuffer> &accessUnit);
++    virtual bool isAccurateSeek() { return false; }
++    virtual bool dropBufferIfNeeded (sp<MediaCodecBuffer>, int32_t, bool*) { return false; }
++    virtual void setPerfModeDecoder (sp<NuPlayer::DecoderBase>, bool) { return; }
++    virtual void sendCodecPerfHints (sp<MediaCodec>, const sp<AMessage> &) { return; }
++
++    // ----- NO TRESSPASSING BEYOND THIS LINE ------
++    DECLARE_LOADABLE_SINGLETON(AVNuUtils);
++};
++
++}
++
++#endif // _AV_EXTENSIONS__H_
+diff --git a/media/libavextensions/mediaplayerservice/AVNuFactory.cpp b/media/libavextensions/mediaplayerservice/AVNuFactory.cpp
+new file mode 100644
+index 0000000000..bf4cd0fa4f
+--- /dev/null
++++ b/media/libavextensions/mediaplayerservice/AVNuFactory.cpp
+@@ -0,0 +1,91 @@
++/*
++ * Copyright (c) 2013 - 2018, The Linux Foundation. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are
++ * met:
++ *     * Redistributions of source code must retain the above copyright
++ *      notice, this list of conditions and the following disclaimer.
++ *     * Redistributions in binary form must reproduce the above
++ *       copyright notice, this list of conditions and the following
++ *       disclaimer in the documentation and/or other materials provided
++ *      with the distribution.
++ *     * Neither the name of The Linux Foundation nor the names of its
++ *      contributors may be used to endorse or promote products derived
++ *       from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
++ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
++ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
++ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
++ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
++ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++//#define LOG_NDEBUG 0
++#define LOG_TAG "AVNuFactory"
++#include <utils/Log.h>
++
++#include <media/stagefright/foundation/ADebug.h>
++#include <media/stagefright/foundation/AMessage.h>
++
++#include <nuplayer/NuPlayer.h>
++#include <nuplayer/NuPlayerDecoderBase.h>
++#include <nuplayer/NuPlayerDecoderPassThrough.h>
++#include <nuplayer/NuPlayerDecoder.h>
++#include <nuplayer/NuPlayerCCDecoder.h>
++#include <gui/Surface.h>
++#include <nuplayer/NuPlayerSource.h>
++#include <nuplayer/NuPlayerRenderer.h>
++
++#include "common/ExtensionsLoader.hpp"
++#include "mediaplayerservice/AVNuExtensions.h"
++
++namespace android {
++
++sp<NuPlayer> AVNuFactory::createNuPlayer(pid_t pid, const sp<MediaClock> &mediaClock) {
++    return new NuPlayer(pid, mediaClock);
++}
++
++sp<NuPlayer::DecoderBase> AVNuFactory::createPassThruDecoder(
++            const sp<AMessage> &notify,
++            const sp<NuPlayer::Source> &source,
++            const sp<NuPlayer::Renderer> &renderer) {
++    return new NuPlayer::DecoderPassThrough(notify, source, renderer);
++}
++
++sp<NuPlayer::DecoderBase> AVNuFactory::createDecoder(
++            const sp<AMessage> &notify,
++            const sp<NuPlayer::Source> &source,
++            pid_t pid,
++            uid_t uid,
++            const sp<NuPlayer::Renderer> &renderer) {
++    return new NuPlayer::Decoder(notify, source, pid, uid, renderer);
++}
++
++sp<NuPlayer::Renderer> AVNuFactory::createRenderer(
++            const sp<MediaPlayerBase::AudioSink> &sink,
++            const sp<MediaClock> &mediaClock,
++            const sp<AMessage> &notify,
++            uint32_t flags) {
++    return new NuPlayer::Renderer(sink, mediaClock, notify, flags);
++}
++
++// ----- NO TRESSPASSING BEYOND THIS LINE ------
++AVNuFactory::AVNuFactory() {
++}
++
++AVNuFactory::~AVNuFactory() {
++}
++
++//static
++AVNuFactory *AVNuFactory::sInst =
++        ExtensionsLoader<AVNuFactory>::createInstance("createExtendedNuFactory");
++
++} //namespace android
++
+diff --git a/media/libavextensions/mediaplayerservice/AVNuUtils.cpp b/media/libavextensions/mediaplayerservice/AVNuUtils.cpp
+new file mode 100644
+index 0000000000..ba89324a3b
+--- /dev/null
++++ b/media/libavextensions/mediaplayerservice/AVNuUtils.cpp
+@@ -0,0 +1,93 @@
++/*
++ * Copyright (c) 2013 - 2018, The Linux Foundation. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are
++ * met:
++ *     * Redistributions of source code must retain the above copyright
++ *      notice, this list of conditions and the following disclaimer.
++ *     * Redistributions in binary form must reproduce the above
++ *       copyright notice, this list of conditions and the following
++ *       disclaimer in the documentation and/or other materials provided
++ *      with the distribution.
++ *     * Neither the name of The Linux Foundation nor the names of its
++ *      contributors may be used to endorse or promote products derived
++ *       from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
++ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
++ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
++ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
++ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
++ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#define LOG_TAG "AVNuUtils"
++#include <utils/Log.h>
++
++#include <media/stagefright/foundation/ADebug.h>
++#include <media/stagefright/foundation/AMessage.h>
++
++#include <nuplayer/NuPlayer.h>
++#include <nuplayer/NuPlayerDecoderBase.h>
++#include <nuplayer/NuPlayerDecoderPassThrough.h>
++#include <nuplayer/NuPlayerSource.h>
++#include <nuplayer/NuPlayerRenderer.h>
++
++#include "common/ExtensionsLoader.hpp"
++#include "mediaplayerservice/AVNuExtensions.h"
++
++namespace android {
++
++bool AVNuUtils::isVorbisFormat(const sp<MetaData> &) {
++    return false;
++}
++
++void AVNuUtils::printFileName(int) {}
++
++bool AVNuUtils::dropCorruptFrame() { return false; }
++
++void AVNuUtils::setCodecOutputFormat(const sp<AMessage> &) {
++
++}
++
++bool AVNuUtils::isByteStreamModeEnabled(const sp<MetaData> &) {
++    return false;
++}
++
++void AVNuUtils::overWriteAudioOutputFormat(
++       sp <AMessage> & /*dst*/, const sp <AMessage> & /*src*/) {
++}
++
++bool AVNuUtils::pcmOffloadException(const sp<AMessage> &) {
++    return true;
++}
++
++uint32_t AVNuUtils::getFlags() {
++    return 0;
++}
++
++audio_format_t AVNuUtils::getPCMFormat(const sp<AMessage> &) {
++    return AUDIO_FORMAT_PCM_16_BIT;
++}
++
++void AVNuUtils::checkFormatChange(bool * /*formatChange*/,
++        const sp<ABuffer> & /*accessUnit*/) {
++}
++
++// ----- NO TRESSPASSING BEYOND THIS LINE ------
++AVNuUtils::AVNuUtils() {}
++
++AVNuUtils::~AVNuUtils() {}
++
++//static
++AVNuUtils *AVNuUtils::sInst =
++        ExtensionsLoader<AVNuUtils>::createInstance("createExtendedNuUtils");
++
++} //namespace android
++
+diff --git a/media/libavextensions/stagefright/AVExtensions.h b/media/libavextensions/stagefright/AVExtensions.h
+new file mode 100644
+index 0000000000..16439a6213
+--- /dev/null
++++ b/media/libavextensions/stagefright/AVExtensions.h
+@@ -0,0 +1,240 @@
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++/*
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++// QTI_BEGIN: 2020-06-10: Audio: libstagefright: check for audio source aggregate before initialization
++ * Copyright (c) 2013 - 2018, 2020 The Linux Foundation. All rights reserved.
++// QTI_END: 2020-06-10: Audio: libstagefright: check for audio source aggregate before initialization
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are
++ * met:
++ *     * Redistributions of source code must retain the above copyright
++ *      notice, this list of conditions and the following disclaimer.
++ *     * Redistributions in binary form must reproduce the above
++ *       copyright notice, this list of conditions and the following
++ *       disclaimer in the documentation and/or other materials provided
++ *      with the distribution.
++ *     * Neither the name of The Linux Foundation nor the names of its
++ *      contributors may be used to endorse or promote products derived
++ *       from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
++ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
++ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
++ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
++ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
++ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++#ifndef _AV_EXTENSIONS_H_
++#define _AV_EXTENSIONS_H_
++
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++// QTI_BEGIN: 2018-03-01: Video: media: remove libstagefright_omx dependency
++#include <media/DataSource.h>
++// QTI_END: 2018-03-01: Video: media: remove libstagefright_omx dependency
++#include <media/stagefright/MediaExtractor.h>
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++#include <SharedMemoryBuffer.h>
++#include <common/AVExtensionsCommon.h>
++#include <system/audio.h>
++#include <media/IOMX.h>
++#include <camera/android/hardware/ICamera.h>
++#include <media/mediarecorder.h>
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++#include "mpeg2ts/ESQueue.h"
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++
++namespace android {
++
++struct ACodec;
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++// QTI_BEGIN: 2018-05-13: Video: stagefright: add factory method to create MediaFilters
++struct CodecBase;
++// QTI_END: 2018-05-13: Video: stagefright: add factory method to create MediaFilters
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++struct MediaCodec;
++struct ALooper;
++class IMediaExtractor;
++class MediaExtractor;
++class AudioParameter;
++class MetaData;
++class CameraParameters;
++class MediaBuffer;
++class CameraSource;
++class CameraSourceTimeLapse;
++class ICameraRecordingProxy;
++struct Size;
++class MPEG4Writer;
++struct AudioSource;
++
++/*
++ * Factory to create objects of base-classes in libstagefright
++ */
++struct AVFactory {
++    virtual sp<ACodec> createACodec();
++    virtual ElementaryStreamQueue* createESQueue(
++            ElementaryStreamQueue::Mode mode, uint32_t flags = 0);
++    virtual CameraSource *CreateCameraSourceFromCamera(
++            const sp<hardware::ICamera> &camera,
++            const sp<ICameraRecordingProxy> &proxy,
++            int32_t cameraId,
++            const String16& clientName,
++            uid_t clientUid,
++            pid_t clientPid,
++            Size videoSize,
++            int32_t frameRate,
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++            const sp<SurfaceType>& surface,
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++            bool storeMetaDataInVideoBuffers = true);
++
++    virtual CameraSourceTimeLapse *CreateCameraSourceTimeLapseFromCamera(
++            const sp<hardware::ICamera> &camera,
++            const sp<ICameraRecordingProxy> &proxy,
++            int32_t cameraId,
++            const String16& clientName,
++            uid_t clientUid,
++            pid_t clientPid,
++            Size videoSize,
++            int32_t videoFrameRate,
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++#if WB_LIBCAMERASERVICE_WITH_DEPENDENCIES
++            const sp<Surface>& surface,
++#else
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++            const sp<IGraphicBufferProducer>& surface,
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++#endif
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++            int64_t timeBetweenFrameCaptureUs,
++            bool storeMetaDataInVideoBuffers = true);
++    virtual AudioSource* createAudioSource(
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++            const audio_attributes_t *attr,
++            const content::AttributionSourceState& attributionSource,
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++            uint32_t sampleRate,
++            uint32_t channels,
++            uint32_t outSampleRate = 0,
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++            audio_port_handle_t selectedDeviceId = AUDIO_PORT_HANDLE_NONE,
++            audio_microphone_direction_t selectedMicDirection = MIC_DIRECTION_UNSPECIFIED,
++            float selectedMicFieldDimension = MIC_FIELD_DIMENSION_NORMAL);
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++    virtual MPEG4Writer *CreateMPEG4Writer(int fd);
++
++    // ----- NO TRESSPASSING BEYOND THIS LINE ------
++    DECLARE_LOADABLE_SINGLETON(AVFactory);
++};
++
++/*
++ * Common delegate to the classes in libstagefright
++ */
++struct AVUtils {
++
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++    virtual status_t convertMetaDataToMessage(
++            const MetaDataBase *meta, sp<AMessage> *format);
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++    virtual status_t convertMetaDataToMessage(
++            const sp<MetaData> &meta, sp<AMessage> *format);
++    virtual status_t convertMessageToMetaData(
++            const sp<AMessage> &msg, sp<MetaData> &meta);
++    virtual status_t mapMimeToAudioFormat( audio_format_t& format, const char* mime);
++    virtual status_t sendMetaDataToHal(const sp<MetaData>& meta, AudioParameter *param);
++    virtual sp<MediaCodec> createCustomComponentByName(const sp<ALooper> &looper,
++                const char* mime, bool encoder, const sp<AMessage> &format);
++    virtual bool isEnhancedExtension(const char *extension);
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++// QTI_BEGIN: 2020-06-10: Audio: libstagefright: check for audio source aggregate before initialization
++    virtual bool isAudioSourceAggregate(const audio_attributes_t *, uint32_t channelCount);
++// QTI_END: 2020-06-10: Audio: libstagefright: check for audio source aggregate before initialization
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++
++    virtual bool hasAudioSampleBits(const sp<MetaData> &);
++    virtual bool hasAudioSampleBits(const sp<AMessage> &);
++    virtual int getAudioSampleBits(const sp<MetaData> &);
++    virtual int getAudioSampleBits(const sp<AMessage> &);
++    virtual audio_format_t updateAudioFormat(audio_format_t audioFormat,
++            const sp<MetaData> &);
++
++    virtual audio_format_t updateAudioFormat(audio_format_t audioFormat,
++            const sp<AMessage> &);
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++// QTI_BEGIN: 2019-02-13: Audio: av: update canOffloadAPE to canOffloadSteam
++    virtual bool canOffloadStream(const sp<MetaData> &meta);
++// QTI_END: 2019-02-13: Audio: av: update canOffloadAPE to canOffloadSteam
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++    virtual bool useQCHWEncoder(const sp<AMessage> &,Vector<AString> *) { return false; }
++
++    virtual int32_t getAudioMaxInputBufferSize(audio_format_t audioFormat,
++            const sp<AMessage> &);
++
++    virtual bool mapAACProfileToAudioFormat(const sp<MetaData> &,
++            audio_format_t &,
++            uint64_t /*eAacProfile*/);
++
++    virtual bool mapAACProfileToAudioFormat(const sp<AMessage> &,
++            audio_format_t &,
++            uint64_t /*eAacProfile*/);
++
++    virtual void extractCustomCameraKeys(
++            const CameraParameters& /*params*/, sp<MetaData> &/*meta*/) {}
++    virtual void printFileName(int /*fd*/) {}
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++
++// QTI_BEGIN: 2019-03-19: Video: stagefright: pass time offset to avenhancement
++    // deprecate these two use one with 3 arguments
++// QTI_END: 2019-03-19: Video: stagefright: pass time offset to avenhancement
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++    virtual void addDecodingTimesFromBatch(MediaBuffer * /*buf*/,
++            List<int64_t> &/*decodeTimeQueue*/) {}
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++// QTI_BEGIN: 2018-02-27: Video: Compilation fix for PPR1.180219.001 and fix for mIoHandle
++    virtual void addDecodingTimesFromBatch(MediaBufferBase * /*buf*/,
++            List<int64_t> &/*decodeTimeQueue*/) {}
++// QTI_END: 2018-02-27: Video: Compilation fix for PPR1.180219.001 and fix for mIoHandle
++
++// QTI_BEGIN: 2019-03-19: Video: stagefright: pass time offset to avenhancement
++    virtual void addDecodingTimesFromBatch(MediaBufferBase * /*buf*/,
++            List<int64_t> &/*decodeTimeQueue*/, int64_t /*time-offset-us*/) {}
++
++// QTI_END: 2019-03-19: Video: stagefright: pass time offset to avenhancement
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++    virtual bool canDeferRelease(const sp<MetaData> &/*meta*/) { return false; }
++    virtual void setDeferRelease(sp<MetaData> &/*meta*/) {}
++
++    virtual bool isAudioMuxFormatSupported(const char *mime);
++    virtual void cacheCaptureBuffers(sp<hardware::ICamera> camera, video_encoder encoder);
++    virtual void getHFRParams(bool*, int32_t*, sp<AMessage>);
++    virtual int64_t overwriteTimeOffset(bool, int64_t, int64_t *, int64_t, int32_t);
++    virtual void  getCustomCodecsLocation(std::string *outPath);
++    virtual void  getCustomCodecsPerformanceLocation(std::string *outPath);
++
++    virtual void setIntraPeriod(
++                int nPFrames, int nBFrames, sp<IOMXNode> mOMXNode);
++
++    virtual const char *getComponentRole(bool isEncoder, const char *mime);
++
++
++    // Used by ATSParser
++    virtual bool IsHevcIDR(const sp<ABuffer> &accessUnit);
++
++    virtual sp<DataSource> wrapTraceDataSource(const sp<DataSource> &dataSource);
++    virtual sp<IMediaExtractor> wrapTraceMediaExtractor(const sp<IMediaExtractor> &extractor);
++    virtual sp<AMessage> fillExtradata(sp<MediaCodecBuffer>&, sp<AMessage> &format);
++
++    // ----- NO TRESSPASSING BEYOND THIS LINE ------
++    DECLARE_LOADABLE_SINGLETON(AVUtils);
++};
++
++}
++
++#endif // _AV_EXTENSIONS__H_
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
+diff --git a/media/libavextensions/stagefright/AVFactory.cpp b/media/libavextensions/stagefright/AVFactory.cpp
+new file mode 100644
+index 0000000000..5f69c29784
+--- /dev/null
++++ b/media/libavextensions/stagefright/AVFactory.cpp
+@@ -0,0 +1,142 @@
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++/*
++ * Copyright (c) 2013 - 2018, The Linux Foundation. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are
++ * met:
++ *     * Redistributions of source code must retain the above copyright
++ *      notice, this list of conditions and the following disclaimer.
++ *     * Redistributions in binary form must reproduce the above
++ *       copyright notice, this list of conditions and the following
++ *       disclaimer in the documentation and/or other materials provided
++ *      with the distribution.
++ *     * Neither the name of The Linux Foundation nor the names of its
++ *      contributors may be used to endorse or promote products derived
++ *       from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
++ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
++ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
++ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
++ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
++ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#define LOG_TAG "AVFactory"
++#include <utils/Log.h>
++
++#include <media/stagefright/foundation/ADebug.h>
++#include <media/stagefright/foundation/AMessage.h>
++#include <media/stagefright/foundation/ABuffer.h>
++#include <media/stagefright/MediaDefs.h>
++#include <media/stagefright/MediaCodecList.h>
++#include <media/stagefright/MetaData.h>
++#include <media/stagefright/ACodec.h>
++#include <media/stagefright/MediaDefs.h>
++#include <media/stagefright/CameraSourceTimeLapse.h>
++#include <media/stagefright/MPEG4Writer.h>
++#include <media/stagefright/AudioSource.h>
++
++#include "common/ExtensionsLoader.hpp"
++#include "stagefright/AVExtensions.h"
++
++namespace android {
++
++sp<ACodec> AVFactory::createACodec() {
++    return new ACodec;
++}
++
++CameraSource* AVFactory::CreateCameraSourceFromCamera(
++            const sp<hardware::ICamera> &camera,
++            const sp<ICameraRecordingProxy> &proxy,
++            int32_t cameraId,
++            const String16& clientName,
++            uid_t clientUid,
++            pid_t clientPid,
++            Size videoSize,
++            int32_t frameRate,
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++            const sp<SurfaceType>& surface,
++            // TODO(b/168051781) review removal of storeMetaDataInVideoBuffers
++            // parameter from CreateFromCamera API.
++            bool /*storeMetaDataInVideoBuffers*/) {
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++    return CameraSource::CreateFromCamera(camera, proxy, cameraId,
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++            clientName, clientUid, clientPid, videoSize, frameRate, surface);
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++}
++
++CameraSourceTimeLapse* AVFactory::CreateCameraSourceTimeLapseFromCamera(
++        const sp<hardware::ICamera> &camera,
++        const sp<ICameraRecordingProxy> &proxy,
++        int32_t cameraId,
++        const String16& clientName,
++        uid_t clientUid,
++        pid_t clientPid,
++        Size videoSize,
++        int32_t videoFrameRate,
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++#if WB_LIBCAMERASERVICE_WITH_DEPENDENCIES
++        const sp<Surface>& surface,
++#else
++        const sp<IGraphicBufferProducer>& surface,
++#endif
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++        int64_t timeBetweenFrameCaptureUs,
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++        bool /*storeMetaDataInVideoBuffers*/) {
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++    return CameraSourceTimeLapse::CreateFromCamera(camera, proxy, cameraId,
++            clientName, clientUid, clientPid, videoSize, videoFrameRate, surface,
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++            timeBetweenFrameCaptureUs);
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++}
++
++MPEG4Writer* AVFactory::CreateMPEG4Writer(int fd) {
++    return new MPEG4Writer(fd);
++}
++
++ElementaryStreamQueue* AVFactory::createESQueue(
++         ElementaryStreamQueue::Mode , uint32_t ) {
++    return NULL;
++}
++
++AudioSource* AVFactory::createAudioSource(
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++            const audio_attributes_t *attr,
++            const content::AttributionSourceState& attributionSource,
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++            uint32_t sampleRate,
++            uint32_t channels,
++            uint32_t outSampleRate,
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++            audio_port_handle_t selectedDeviceId,
++            audio_microphone_direction_t /*selectedMicDirection*/,
++            float /*selectedMicFieldDimension*/) {
++    // TODO(b/129493645): use new selectedMicDirection and selectedMicFieldDimension params
++    return new AudioSource(attr, attributionSource, sampleRate,
++                            channels, outSampleRate, selectedDeviceId);
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++}
++// ----- NO TRESSPASSING BEYOND THIS LINE ------
++AVFactory::AVFactory() {
++}
++
++AVFactory::~AVFactory() {
++}
++
++//static
++AVFactory *AVFactory::sInst =
++        ExtensionsLoader<AVFactory>::createInstance("createExtendedFactory");
++
++} //namespace android
++
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
+diff --git a/media/libavextensions/stagefright/AVUtils.cpp b/media/libavextensions/stagefright/AVUtils.cpp
+new file mode 100644
+index 0000000000..1b62d1f790
+--- /dev/null
++++ b/media/libavextensions/stagefright/AVUtils.cpp
+@@ -0,0 +1,211 @@
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++/*
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++// QTI_BEGIN: 2020-06-10: Audio: libstagefright: check for audio source aggregate before initialization
++ * Copyright (c) 2013 - 2018, 2020 The Linux Foundation. All rights reserved.
++// QTI_END: 2020-06-10: Audio: libstagefright: check for audio source aggregate before initialization
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are
++ * met:
++ *     * Redistributions of source code must retain the above copyright
++ *      notice, this list of conditions and the following disclaimer.
++ *     * Redistributions in binary form must reproduce the above
++ *       copyright notice, this list of conditions and the following
++ *       disclaimer in the documentation and/or other materials provided
++ *      with the distribution.
++ *     * Neither the name of The Linux Foundation nor the names of its
++ *      contributors may be used to endorse or promote products derived
++ *       from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
++ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
++ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
++ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
++ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
++ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#define LOG_TAG "AVUtils"
++#include <utils/Log.h>
++
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++#include <android/IMediaExtractor.h>
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++#include <media/stagefright/foundation/ADebug.h>
++#include <media/stagefright/foundation/AMessage.h>
++#include <media/stagefright/foundation/ABuffer.h>
++#include <media/stagefright/MediaDefs.h>
++#include <media/stagefright/MediaCodecList.h>
++#include <media/stagefright/MetaData.h>
++#include <gui/Surface.h>
++#include <media/stagefright/ACodec.h>
++#include <media/stagefright/MediaCodec.h>
++
++#include "common/ExtensionsLoader.hpp"
++#include "stagefright/AVExtensions.h"
++#include "omx/OMXUtils.h"
++
++
++namespace android {
++
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++status_t AVUtils::convertMetaDataToMessage(
++        const MetaDataBase *, sp<AMessage> *) {
++    return OK;
++}
++
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++status_t AVUtils::convertMetaDataToMessage(
++        const sp<MetaData> &, sp<AMessage> *) {
++    return OK;
++}
++
++status_t AVUtils::convertMessageToMetaData(
++        const sp<AMessage> &, sp<MetaData> &) {
++    return OK;
++}
++
++status_t AVUtils::mapMimeToAudioFormat(
++        audio_format_t&, const char* ) {
++    return OK;
++}
++
++status_t AVUtils::sendMetaDataToHal(
++        const sp<MetaData>&, AudioParameter *){
++    return OK;
++}
++
++bool AVUtils::hasAudioSampleBits(const sp<MetaData> &) {
++    return false;
++}
++
++bool AVUtils::hasAudioSampleBits(const sp<AMessage> &) {
++    return false;
++}
++
++int AVUtils::getAudioSampleBits(const sp<MetaData> &) {
++    return 16;
++}
++
++int AVUtils::getAudioSampleBits(const sp<AMessage> &) {
++    return 16;
++}
++
++audio_format_t AVUtils::updateAudioFormat(audio_format_t audioFormat,
++        const sp<MetaData> &){
++    return audioFormat;
++}
++
++audio_format_t AVUtils::updateAudioFormat(audio_format_t audioFormat,
++        const sp<AMessage> &){
++    return audioFormat;
++}
++
++sp<MediaCodec> AVUtils::createCustomComponentByName(
++           const sp<ALooper> &, const char* , bool, const sp<AMessage> &) {
++               return NULL;
++}
++
++int32_t AVUtils::getAudioMaxInputBufferSize(audio_format_t, const sp<AMessage> &) {
++    return 0;
++}
++
++bool AVUtils::mapAACProfileToAudioFormat(const sp<MetaData> &, audio_format_t &,
++                 uint64_t  /*eAacProfile*/) {
++    return false ;
++}
++
++bool AVUtils::mapAACProfileToAudioFormat(const sp<AMessage> &,  audio_format_t &,
++                 uint64_t  /*eAacProfile*/) {
++    return false ;
++}
++
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++// QTI_BEGIN: 2019-02-13: Audio: av: update canOffloadAPE to canOffloadSteam
++bool AVUtils::canOffloadStream(const sp<MetaData> &) {
++// QTI_END: 2019-02-13: Audio: av: update canOffloadAPE to canOffloadSteam
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++   return true;
++}
++
++bool AVUtils::isEnhancedExtension(const char *) {
++    return false;
++}
++
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++// QTI_BEGIN: 2020-06-10: Audio: libstagefright: check for audio source aggregate before initialization
++bool AVUtils::isAudioSourceAggregate(const audio_attributes_t *, uint32_t) {
++    return false;
++}
++
++// QTI_END: 2020-06-10: Audio: libstagefright: check for audio source aggregate before initialization
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++bool AVUtils::isAudioMuxFormatSupported(const char *) {
++    return true;
++}
++
++void AVUtils::cacheCaptureBuffers(sp<hardware::ICamera>, video_encoder) {
++    return;
++}
++
++void AVUtils::getHFRParams(bool*, int32_t*, sp<AMessage>) {
++    return;
++}
++
++int64_t AVUtils::overwriteTimeOffset(bool, int64_t inputBufferTimeOffsetUs, int64_t*,
++           int64_t, int32_t) {
++    return inputBufferTimeOffsetUs;
++}
++
++void AVUtils::getCustomCodecsLocation(std::string *) {
++    return ;
++}
++
++void AVUtils::setIntraPeriod(
++        int, int, sp<IOMXNode>) {
++    return;
++}
++
++void AVUtils::getCustomCodecsPerformanceLocation(std::string *) {
++    return ;
++}
++
++const char *AVUtils::getComponentRole(bool isEncoder, const char *mime) {
++    return GetComponentRole(isEncoder,mime);
++}
++
++bool AVUtils::IsHevcIDR(const sp<ABuffer> &) {
++   return false;
++}
++
++sp<DataSource> AVUtils::wrapTraceDataSource(const sp<DataSource> &dataSource) {
++    return dataSource;
++}
++
++sp<IMediaExtractor> AVUtils::wrapTraceMediaExtractor(const sp<IMediaExtractor> &extractor) {
++    return extractor;
++}
++
++sp<AMessage> AVUtils::fillExtradata(sp<MediaCodecBuffer>&, sp<AMessage> &format) {
++    return format;
++}
++
++// ----- NO TRESSPASSING BEYOND THIS LINE ------
++AVUtils::AVUtils() {}
++
++AVUtils::~AVUtils() {}
++
++//static
++AVUtils *AVUtils::sInst =
++        ExtensionsLoader<AVUtils>::createInstance("createExtendedUtils");
++
++} //namespace android
++
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
+diff --git a/media/libavextensions/stagefright/ExtendedMediaDefs.cpp b/media/libavextensions/stagefright/ExtendedMediaDefs.cpp
+new file mode 100644
+index 0000000000..9f98f96f80
+--- /dev/null
++++ b/media/libavextensions/stagefright/ExtendedMediaDefs.cpp
+@@ -0,0 +1,80 @@
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++/*Copyright (c) 2012 - 2018, The Linux Foundation. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are
++ * met:
++ *     * Redistributions of source code must retain the above copyright
++ *      notice, this list of conditions and the following disclaimer.
++ *     * Redistributions in binary form must reproduce the above
++ *       copyright notice, this list of conditions and the following
++ *       disclaimer in the documentation and/or other materials provided
++ *      with the distribution.
++ *     * Neither the name of The Linux Foundation nor the names of its
++ *      contributors may be used to endorse or promote products derived
++ *       from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
++ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
++ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
++ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
++ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
++ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ *
++ */
++
++#include <media/stagefright/ExtendedMediaDefs.h>
++
++namespace android {
++
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++// QTI_BEGIN: 2018-05-08: Audio: av: Changes to support MPEGH
++const char *MEDIA_MIMETYPE_AUDIO_MHAS = "audio/mhas";
++// QTI_END: 2018-05-08: Audio: av: Changes to support MPEGH
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++const char *MEDIA_MIMETYPE_VIDEO_WMV = "video/x-ms-wmv";
++const char *MEDIA_MIMETYPE_VIDEO_WMV_VC1 = "video/wvc1";
++const char *MEDIA_MIMETYPE_AUDIO_WMA_PRO = "audio/x-ms-wma-pro";
++const char *MEDIA_MIMETYPE_AUDIO_WMA_LOSSLESS = "audio/x-ms-wma-lossless";
++const char *MEDIA_MIMETYPE_CONTAINER_ASF = "video/x-ms-asf";
++const char *MEDIA_MIMETYPE_CONTAINER_AAC = "audio/aac";
++const char *MEDIA_MIMETYPE_CONTAINER_QCP = "audio/vnd.qcelp";
++const char *MEDIA_MIMETYPE_VIDEO_DIVX311 = "video/divx311";
++const char *MEDIA_MIMETYPE_VIDEO_DIVX4 = "video/divx4";
++const char *MEDIA_MIMETYPE_CONTAINER_MPEG2 = "video/mp2";
++const char *MEDIA_MIMETYPE_CONTAINER_3G2 = "video/3g2";
++const char *MEDIA_MIMETYPE_AUDIO_DTS_LBR = "audio/dts-lbr";
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++// QTI_BEGIN: 2022-02-21: Audio: media: add support for "amr-wb+" mime
++const char *MEDIA_MIMETYPE_AUDIO_AMR_WB_PLUS = "audio/amr-wb+";
++const char *MEDIA_MIMETYPE_AUDIO_QC_AMR_WB_PLUS = "audio/amr-wb-plus";
++// QTI_END: 2022-02-21: Audio: media: add support for "amr-wb+" mime
++// QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
++const char *MEDIA_MIMETYPE_AUDIO_AIFF = "audio/x-aiff";
++const char *MEDIA_MIMETYPE_AUDIO_APE = "audio/x-ape";
++const char *MEDIA_MIMETYPE_CONTAINER_QCAMR_NB = "audio/qc-amr";
++const char *MEDIA_MIMETYPE_CONTAINER_QCAMR_WB = "audio/qc-amr-wb";
++const char *MEDIA_MIMETYPE_CONTAINER_QCMPEG = "audio/qc-mpeg";
++const char *MEDIA_MIMETYPE_CONTAINER_QCWAV = "audio/qc-wav";
++const char *MEDIA_MIMETYPE_CONTAINER_QCMPEG2TS = "video/qc-mp2ts";
++const char *MEDIA_MIMETYPE_CONTAINER_QCMPEG2PS = "video/qc-mp2ps";
++const char *MEDIA_MIMETYPE_CONTAINER_QCMPEG4 = "video/qc-mp4";
++const char *MEDIA_MIMETYPE_CONTAINER_QCMATROSKA = "video/qc-matroska";
++const char *MEDIA_MIMETYPE_CONTAINER_QCOGG = "video/qc-ogg";
++const char *MEDIA_MIMETYPE_CONTAINER_QCFLV = "video/qc-flv";
++const char *MEDIA_MIMETYPE_VIDEO_VPX = "video/x-vnd.on2.vp8"; //backward compatibility
++const char *MEDIA_MIMETYPE_CONTAINER_QTIFLAC = "audio/qti-flac";
++const char *MEDIA_MIMETYPE_VIDEO_MPEG4_DP = "video/mp4v-esdp";
++const char *MEDIA_MIMETYPE_CONTAINER_DSF = "audio/x-dsf"; // For DSF clip
++const char *MEDIA_MIMETYPE_CONTAINER_DFF = "audio/x-dff"; // For DFF or DIF clip
++const char *MEDIA_MIMETYPE_AUDIO_DSD = "audio/dsd";
++const char *MEDIA_MIMETYPE_CONTAINER_MOV = "video/quicktime"; //mov clip
++const char *MEDIA_MIMETYPE_VIDEO_TME = "video/tme";
++
++}  // namespace android
++// QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions

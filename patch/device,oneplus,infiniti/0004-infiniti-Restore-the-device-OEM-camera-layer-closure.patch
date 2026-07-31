@@ -1,0 +1,49 @@
+From db2894d285d3a201605a17f4f3a06ce84c7a15b6 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Thu, 30 Jul 2026 10:30:44 -0600
+Subject: [PATCH 4/4] infiniti: Restore the device OEM camera layer closure
+
+The OEM camera layer is an ABI closure: camera.oemlayer.v2.so, its adapter,
+healthmonitor, logger and uilayer siblings, and libsensorbridge must all come
+from one donor. infiniti ships an older generation than macan/macanc/fairlady,
+so a shared copy crashes the camera provider in
+OemLayer::OCommonContext::InitFallbackController during stream configuration.
+
+Declare the whole closure per device, import the common camera namespace so
+com.oplus.node.preview.v2 can still resolve camera.oemlayer.uilayer, and add a
+copy rule for the 32-bit libsensorbridge, which has no 32-bit source and would
+otherwise be dropped from odm.img.
+---
+ proprietary-files.txt | 12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/proprietary-files.txt b/proprietary-files.txt
+index 58759b9..b685a49 100644
+--- a/proprietary-files.txt
++++ b/proprietary-files.txt
+@@ -827,6 +827,14 @@ odm/lib64/camera/components/com.oplus.stats.awb.so
+ odm/lib64/camera/components/com.oplus.stats.pdlib.so
+ odm/lib64/camera/components/libcamxoemsatsoftwarefusionwrapper.so
+ odm/lib64/camera/components/libcamxoemsatwrapper.so
++# OEM camera layer: generation-locked to the infiniti donor.
++odm/lib64/hw/camera.oemlayer.v2.so;DISABLE_CHECKELF;DISABLE_DEPS
++odm/lib64/camera.oemlayer.adapter.so;DISABLE_CHECKELF;DISABLE_DEPS
++odm/lib64/camera.oemlayer.healthmonitor.so;DISABLE_CHECKELF;DISABLE_DEPS
++odm/lib64/camera.oemlayer.logger.so;DISABLE_CHECKELF;DISABLE_DEPS
++odm/lib64/camera.oemlayer.uilayer.so;DISABLE_CHECKELF;DISABLE_DEPS
++odm/lib64/libsensorbridge.so
++odm/lib/libsensorbridge.so;MAKE_COPY_RULE_ONLY
+ odm/lib64/camera/awb_parameter_default.bin
+ odm/lib64/camera/com.qti.sensor.infinitifront.so
+ odm/lib64/camera/com.qti.sensor.infinitimain.so
+@@ -903,10 +911,6 @@ odm/lib64/bm6a81v08s14n80.bin
+ odm/lib64/bm6a81v08s14n83.bin
+ odm/lib64/bm6a81v08s14n85.bin
+ odm/lib64/bm6a81v08s14n86.bin
+-odm/lib64/camera.oemlayer.adapter.so
+-odm/lib64/camera.oemlayer.healthmonitor.so
+-odm/lib64/camera.oemlayer.logger.so
+-odm/lib64/camera.oemlayer.uilayer.so
+ odm/lib64/com.oplus.mcx.linearmapper.so
+ odm/lib64/com.oplus.node.preview.v2.so
+ odm/lib64/lib2DSlender.so

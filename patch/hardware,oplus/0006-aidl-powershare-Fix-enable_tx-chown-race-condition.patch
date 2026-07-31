@@ -1,0 +1,26 @@
+From e13c2e8f7bb95e731e1764d53675b4ca4fd5d490 Mon Sep 17 00:00:00 2001
+From: chandu078 <chandudyavanapelli03@gmail.com>
+Date: Fri, 15 May 2026 20:34:31 +0000
+Subject: [PATCH 06/22] aidl: powershare: Fix enable_tx chown race condition
+
+Change-Id: I17078bc9bceba627218b854404badb2649d4c674
+(cherry picked from commit 69492ab5635005ce434605827702821b0aa1bdc5)
+
+Ledger: hardware_oplus.md Accepted Group A row 5 (69492ab5)
+Change-Id: I60df49edd89d477bc0f1d10f17108d49634c9c47
+(cherry picked from commit 2f8af95e4ea149be3a998df92b55af53a41e1218)
+(cherry picked from commit 201b2ea2f335ef3c31bd5168d15c0f8ceae8cb02)
+---
+ aidl/powershare/vendor.lineage.powershare-service.oplus.rc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/aidl/powershare/vendor.lineage.powershare-service.oplus.rc b/aidl/powershare/vendor.lineage.powershare-service.oplus.rc
+index ad28824d..f12caddc 100644
+--- a/aidl/powershare/vendor.lineage.powershare-service.oplus.rc
++++ b/aidl/powershare/vendor.lineage.powershare-service.oplus.rc
+@@ -1,4 +1,4 @@
+-on init
++on property:sys.boot_completed=1
+     chown system system /proc/wireless/enable_tx
+ 
+ service vendor.powershare-hal /vendor/bin/hw/vendor.lineage.powershare-service.oplus

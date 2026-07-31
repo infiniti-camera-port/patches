@@ -1,0 +1,22 @@
+From b110e08d87a5d6beaff01e8a50735f3bb7a58e82 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Mon, 20 Jul 2026 15:37:26 -0600
+Subject: [PATCH 4/7] sm8850-common: restore media profile selector
+
+(cherry picked from commit 93948a9f2f35e45b5e5447595ae91716457e6285)
+---
+ init/init.qcom.rc | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/init/init.qcom.rc b/init/init.qcom.rc
+index 2131424..b05953e 100644
+--- a/init/init.qcom.rc
++++ b/init/init.qcom.rc
+@@ -543,6 +543,7 @@ on property:vendor.media.target.version=*
+ on property:vendor.media.target_variant=*
+     setprop ro.media.xml_variant.codecs ${vendor.media.target_variant}
+     setprop ro.media.xml_variant.codecs_performance ${vendor.media.target_variant}
++    setprop ro.media.xml_variant.profiles ${vendor.media.target_variant}
+ 
+ service qcom-c_core-sh  /vendor/bin/init.qcom.class_core.sh
+     class core

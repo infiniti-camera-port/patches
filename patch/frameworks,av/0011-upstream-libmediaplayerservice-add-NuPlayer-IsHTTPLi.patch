@@ -1,0 +1,63 @@
+From c9e2c9dbee1c268910b62032907db14bcbd9cb67 Mon Sep 17 00:00:00 2001
+From: Manikanta Kanamarlapudi <kmanikan@codeaurora.org>
+Date: Wed, 15 Jul 2026 21:14:37 +0000
+Subject: [PATCH 11/13] [upstream] libmediaplayerservice: add
+ NuPlayer::IsHTTPLiveURL for AV extensions
+
+Add NuPlayer::IsHTTPLiveURL(), a static helper used by the CLO AV
+extensions and imported by the OEM libavenhancements (base of the Oplus
+AV-enhancement chain).
+
+Hand-adapted to A16: does NOT cherry-pick clean from ef5997b09c due to
+8-year NuPlayer.cpp/.h divergence; committer applied the equivalent hunk.
+Attribution: original design = Manikanta Kanamarlapudi (CLO frameworks/av,
+ef5997b09c); A16 port = committer.
+
+Change-Id: I155ad86e29ddb9206c9621467e8844b78bbc72e4
+(cherry picked from commit 569d7fc11e26feca1c2b0e7a641d396c8115fa8e)
+---
+ .../libmediaplayerservice/nuplayer/NuPlayer.cpp | 17 +++++++++++++++++
+ .../nuplayer/include/nuplayer/NuPlayer.h        |  2 ++
+ 2 files changed, 19 insertions(+)
+
+diff --git a/media/libmediaplayerservice/nuplayer/NuPlayer.cpp b/media/libmediaplayerservice/nuplayer/NuPlayer.cpp
+index 4a1b6064c1..b3fcb94c82 100644
+--- a/media/libmediaplayerservice/nuplayer/NuPlayer.cpp
++++ b/media/libmediaplayerservice/nuplayer/NuPlayer.cpp
+@@ -213,6 +213,23 @@ NuPlayer::NuPlayer(pid_t pid, const sp<MediaClock> &mediaClock)
+     clearFlushComplete();
+ }
+ 
++bool NuPlayer::IsHTTPLiveURL(const char *url) {
++    if (!strncasecmp("http://", url, 7)
++            || !strncasecmp("https://", url, 8)
++            || !strncasecmp("file://", url, 7)) {
++        size_t len = strlen(url);
++        if (len >= 5 && !strcasecmp(".m3u8", &url[len - 5])) {
++            return true;
++        }
++
++        if (strstr(url,"m3u8")) {
++            return true;
++        }
++    }
++
++    return false;
++}
++
+ NuPlayer::~NuPlayer() {
+ }
+ 
+diff --git a/media/libmediaplayerservice/nuplayer/include/nuplayer/NuPlayer.h b/media/libmediaplayerservice/nuplayer/include/nuplayer/NuPlayer.h
+index 830c455c00..e1d911540c 100644
+--- a/media/libmediaplayerservice/nuplayer/include/nuplayer/NuPlayer.h
++++ b/media/libmediaplayerservice/nuplayer/include/nuplayer/NuPlayer.h
+@@ -111,6 +111,8 @@ protected:
+ 
+     virtual void onMessageReceived(const sp<AMessage> &msg);
+ 
++    static bool IsHTTPLiveURL(const char *url);
++
+ public:
+     struct NuPlayerStreamListener;
+     struct Source;

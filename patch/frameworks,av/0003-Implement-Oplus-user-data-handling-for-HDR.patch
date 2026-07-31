@@ -1,0 +1,46 @@
+From 69129f32eb5b4b03081b88be0cb5818a662cab24 Mon Sep 17 00:00:00 2001
+From: Kill3rEz <98993017+Kill3rEz@users.noreply.github.com>
+Date: Wed, 17 Jun 2026 16:04:28 +0200
+Subject: [PATCH 03/13] Implement Oplus user data handling for HDR
+
+Add OplusUserData parameter handling for HDR metadata passthrough to MPEG4Writer
+---
+ media/libmediaplayerservice/StagefrightRecorder.cpp | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/media/libmediaplayerservice/StagefrightRecorder.cpp b/media/libmediaplayerservice/StagefrightRecorder.cpp
+index eb4d05d541..f1688fa15c 100644
+--- a/media/libmediaplayerservice/StagefrightRecorder.cpp
++++ b/media/libmediaplayerservice/StagefrightRecorder.cpp
+@@ -1127,6 +1127,10 @@ status_t StagefrightRecorder::setParameter(
+         }
+     } else if (key == "log-session-id") {
+         return setLogSessionId(value);
++    } else if (key == "OplusUserData") {
++        // [PATCH OPLUSHDR] Record and pass parameter to Muxer
++        mOplusUserData = value.c_str();
++        return OK;
+     } else if (key == "set-title") {
+         return OK;
+     } else {
+@@ -2169,7 +2173,7 @@ status_t StagefrightRecorder::setupVideoEncoder(
+     sp<MediaCodecSource> encoder = MediaCodecSource::Create(
+             mLooper, format, cameraSource, mPersistentSurface, flags);
+     if (encoder == NULL) {
+-        ALOGE("Failed to create video encoder");
++        ALOGE("[PATCH OPLUS] FATAL: Failed to create video encoder!");
+         // When the encoder fails to be created, we need
+         // release the camera source due to the camera's lock
+         // and unlock mechanism.
+@@ -2317,6 +2321,11 @@ void StagefrightRecorder::setupMPEG4orWEBMMetaData(sp<MetaData> *meta) {
+         (*meta)->setInt32(kKeyEmptyTrackMalFormed, true);
+         (*meta)->setInt32(kKey4BitTrackIds, true);
+     }
++
++    // [PATCH OPLUSHDR] Pass metadata to MPEG4Writer
++    if (!mOplusUserData.empty()) {
++        (*meta)->setCString(kKeyOplusUserData, mOplusUserData.c_str());
++    }
+ }
+ 
+ status_t StagefrightRecorder::pause() {

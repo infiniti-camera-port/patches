@@ -1,0 +1,31 @@
+From 93b908dfad24f18ca841cc2dc4f5f24a491a252d Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Sun, 19 Jul 2026 23:24:11 -0600
+Subject: [PATCH 12/13] libavextensions: remove stale libmediaextractor include
+ paths
+
+(cherry picked from commit f5e688b6308bf332bd5a7d8a8118fa3460629f2a)
+---
+ media/libavextensions/Android.bp | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/media/libavextensions/Android.bp b/media/libavextensions/Android.bp
+index 980c5faf0d..3bed201da9 100644
+--- a/media/libavextensions/Android.bp
++++ b/media/libavextensions/Android.bp
+@@ -86,7 +86,6 @@ cc_library_static {
+ // QTI_END: 2018-05-04: Video: libstagefirght:change way of accessing aosp project headers
+ // QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
+     include_dirs: [
+-        "frameworks/av/media/libmediaextractor",
+ // QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
+         "frameworks/av/media/module/mpeg2ts",
+ // QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
+@@ -156,7 +155,6 @@ cc_library_static {
+ // QTI_END: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
+         "frameworks/av/media/libmediaplayerservice/nuplayer/include",
+ // QTI_BEGIN: 2018-02-19: Audio: frameworks/av: enable audio extended features
+-        "frameworks/av/media/libmediaextractor",
+ // QTI_END: 2018-02-19: Audio: frameworks/av: enable audio extended features
+ // QTI_BEGIN: 2018-01-23: Audio: stagefright: Make classes customizable and add AV extensions
+         "frameworks/av/media/libavextensions",

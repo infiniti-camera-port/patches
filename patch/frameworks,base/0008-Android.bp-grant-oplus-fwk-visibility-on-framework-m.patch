@@ -1,0 +1,39 @@
+From 043337aea674231f55a0be0f630f6d96c2d0e19b Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Thu, 30 Jul 2026 04:18:10 -0600
+Subject: [PATCH 8/8] Android.bp: grant oplus-fwk visibility on
+ framework-minus-apex-headers
+
+hardware/oplus e89ffec0 ("oplus-fwk: Add lib oplus-fwk-vibrator-lib") added
+oplus-fwk-vibrator-lib, which builds with sdk_version "core_platform" and so
+needs framework-minus-apex-headers on its compile classpath for android.os.
+That header library restricts visibility and no paired grant was ever
+authored, so soong bootstrap fails:
+
+  error: hardware/oplus/oplus-fwk/Android.bp:37:1: module
+  "oplus-fwk-vibrator-lib" variant "android_common": depends on
+  //frameworks/base:framework-minus-apex-headers which is not visible to
+  this module
+
+No upstream carries the grant either - it is absent from every crdroid and
+upstream ref of this repo as well as from the previous archive - so this is a
+missing pairing on our side rather than a dropped or regressed change. Grant
+the narrowest scope soong itself suggests: the consuming module directory.
+---
+ Android.bp | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/Android.bp b/Android.bp
+index da4b8fca8d44..c58f7ff0a86a 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -497,6 +497,9 @@ java_library {
+     apex_available: ["//apex_available:platform"],
+     visibility: [
+         "//frameworks/base:__subpackages__",
++        // oplus-fwk-vibrator-lib builds against core_platform and needs the framework
++        // headers on its compile classpath for android.os.
++        "//hardware/oplus/oplus-fwk",
+         "//packages/modules/NeuralNetworks:__subpackages__",
+         // TODO(b/429127828): Clean this up along with RELEASE_TELEPHONY_MODULE
+         "//packages/modules/Telephony/framework:__subpackages__",

@@ -1,0 +1,48 @@
+From fa9df5058908eac394852949524d54a6f60161b4 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Sun, 12 Jul 2026 10:16:22 +0000
+Subject: [PATCH 07/13] codec2: prefer semi-planar (NV12/VENUS) over YV12 for
+ QTI encoder input
+
+For an encoder, when the requested YUV420 planar format resolves to
+HAL_PIXEL_FORMAT_YV12, prefer the vendor semi-planar (NV12/VENUS) flexible
+format instead. Qualcomm Venus hardware encoders cannot allocate/consume
+planar YV12 (the gralloc has no video constraint for it) and reject it with
+msm_vidc Unsupported colorformat; the OEM HEIF writer already produces NV12
+(liboplusheifwriter convert*ToNV12), so this matches OOS behavior.
+
+NOTE: downstream color-format correctness only. This is NOT the root fix for
+the OnePlus gallery HEIC quick-flag / Loading-Photo issue -- that root is the
+APS offline reprocess (Chi_OfflineAIDLSession) returning buffer.size:0 (empty
+post-proc output), which is producer-side (camx/APS metadata + SAT-fusion),
+upstream of this encode. Kept as a legit standalone fix.
+
+Plan: .omo/plans/crdroid-v3-infiniti-bp4a-build-now.md
+Change-Id: I7326665228caf58b4761e32885720a538f7e4b04
+(cherry picked from commit b1b6c08d33d31148f48a17fa938e15fca2bf60eb)
+---
+ media/codec2/sfplugin/CCodec.cpp | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/media/codec2/sfplugin/CCodec.cpp b/media/codec2/sfplugin/CCodec.cpp
+index ea44e121d4..e40cb0ef54 100644
+--- a/media/codec2/sfplugin/CCodec.cpp
++++ b/media/codec2/sfplugin/CCodec.cpp
+@@ -1678,6 +1678,17 @@ void CCodec::configure(const sp<AMessage> &msg) {
+                             // No-op
+                             break;
+                     }
++                    if ((config->mDomain & Config::IS_ENCODER)
++                            && format == HAL_PIXEL_FORMAT_YV12
++                            && flexSemiPlanarPixelFormat.count(8) != 0) {
++                        // Qualcomm Venus encoders cannot allocate or consume planar
++                        // YV12 for video-encoder usage (the gralloc has no video
++                        // constraint for it), even though the vendor advertises YV12
++                        // as its planar flexible format. OEM HEIC writers request
++                        // planar but feed NV12 (liboplusheifwriter convert*ToNV12),
++                        // so prefer the semi-planar (NV12/VENUS) format instead.
++                        format = flexSemiPlanarPixelFormat[8];
++                    }
+                 }
+             }
+ 

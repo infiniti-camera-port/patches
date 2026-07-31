@@ -1,13 +1,14 @@
-From 7f9465468ab95811aedeba7ef73859318c187cb0 Mon Sep 17 00:00:00 2001
+From a67226bb15e9152dac3f57b84d56daabf4f381c4 Mon Sep 17 00:00:00 2001
 From: 1vivy <1vivy@tutanota.com>
 Date: Wed, 8 Jul 2026 15:01:36 -0600
-Subject: [PATCH 2/3] infiniti: wire in the Oplus camera
+Subject: [PATCH 2/4] infiniti: wire in the Oplus camera
 
 Sources: 947f88d006feededbccbd72b237dfb5450d7a086, f00a88a4fdc0e4418609d459c67cfa3572cb4f23, cf9b1df1023499d1296278077a6872877669e8e0
 
 Resolved to the v3 graph: device.mk inherits vendor/oneplus/camera-infiniti/camera-infiniti.mk and BoardConfig allows the OEM camera vendor-property namespace; extract-files.py drops the waffle-era CameraHW face-detect-disable rewrite so Oplus camera keeps the donor TRUE/TRUE face-detection flags; proprietary-file rows otherwise stay in the v3 graph.
 
 Change-Id: I7aa5d70aa02ad0c287c41f34236c0599db954137
+(cherry picked from commit 7f9465468ab95811aedeba7ef73859318c187cb0)
 ---
  device.mk             |  3 ++
  extract-files.py      |  4 ---
@@ -15,10 +16,10 @@ Change-Id: I7aa5d70aa02ad0c287c41f34236c0599db954137
  3 files changed, 3 insertions(+), 69 deletions(-)
 
 diff --git a/device.mk b/device.mk
-index b8b8ae8..559fbd9 100644
+index eec0384..b0a5719 100644
 --- a/device.mk
 +++ b/device.mk
-@@ -86,3 +86,6 @@ $(call inherit-product, device/oneplus/sm8850-common/common.mk)
+@@ -87,3 +87,6 @@ $(call inherit-product, device/oneplus/sm8850-common/common.mk)
  
  # Inherit from the proprietary files makefile.
  $(call inherit-product, vendor/oneplus/infiniti/infiniti-vendor.mk)
@@ -41,7 +42,7 @@ index 441d9b6..edca928 100755
          .regex_replace('    delete_recursion', '    #delete_recursion'),
      (
 diff --git a/proprietary-files.txt b/proprietary-files.txt
-index 46829c9..f1e7891 100644
+index 3306da5..a87e9a1 100644
 --- a/proprietary-files.txt
 +++ b/proprietary-files.txt
 @@ -217,41 +217,11 @@ odm/etc/camera/basictone/vig/VigTab_Main
@@ -94,7 +95,7 @@ index 46829c9..f1e7891 100644
  odm/etc/camera/fb_model/000.png
  odm/etc/camera/fb_model/000_pre.bin
  odm/etc/camera/fb_model/000_pre.png
-@@ -773,17 +742,14 @@ odm/etc/camera/Vega_Track_HumanBody_Gray.model
+@@ -792,17 +761,14 @@ odm/etc/camera/Vega_Track_HumanBody_Gray.model
  odm/etc/camera/aiboost_qnn_htp2.7.2_16382673562495086299.bin
  odm/etc/camera/aiboost_qnn_htp2.7.2_828413902960689361.bin
  odm/etc/camera/anc_cl_kernel.cache
@@ -112,7 +113,7 @@ index 46829c9..f1e7891 100644
  odm/etc/camera/gamma_masterMode_quick_hdr_conf.json
  odm/etc/camera/gamma_masterMode_quick_sdr_conf.json
  odm/etc/camera/gamma_photo_hdr_conf.json
-@@ -797,14 +763,12 @@ odm/etc/camera/gamma_video_sdr_conf.json
+@@ -816,14 +782,12 @@ odm/etc/camera/gamma_video_sdr_conf.json
  odm/etc/camera/gm_tcs3449_golden
  odm/etc/camera/main_inv_mapxy_33x25.bin
  odm/etc/camera/main_mapxy_33x25.bin
@@ -127,7 +128,7 @@ index 46829c9..f1e7891 100644
  odm/etc/camera/qnn_binary_9052758122668408981.bin
  odm/etc/camera/salient2_seg.bin
  odm/etc/camera/self_ois.ocfg
-@@ -816,7 +780,6 @@ odm/etc/camera/tele_inv_mapxy_33x25.bin
+@@ -835,7 +799,6 @@ odm/etc/camera/tele_inv_mapxy_33x25.bin
  odm/etc/camera/tele_mapxy_33x25.bin
  odm/etc/camera/text_enhance_yuv_v1.tflite
  odm/etc/camera/v10_vamm_sig_norm_0408_8143-SIM-fp16-8850.bin
@@ -135,7 +136,7 @@ index 46829c9..f1e7891 100644
  odm/etc/camera/video_MLFT_Post_Main.json
  odm/etc/camera/video_MLFT_Post_Tele.json
  odm/etc/camera/video_MLFT_Post_Ultra_Tele.json
-@@ -824,7 +787,6 @@ odm/etc/camera/video_MLFT_Post_Wide.json
+@@ -843,7 +806,6 @@ odm/etc/camera/video_MLFT_Post_Wide.json
  odm/etc/camera/wide_inv_padding_mapxy_33x25.bin
  odm/etc/camera/wide_padding_mapxy_33x25.bin
  odm/etc/init/init.camera_debug_ui.rc
@@ -143,7 +144,7 @@ index 46829c9..f1e7891 100644
  odm/etc/init/init.camera_upate.rc
  odm/etc/init/vendor.oplus.hardware.cammidasservice-V1-service.rc
  odm/etc/vintf/manifest/manifest_oplus_camera_rfi.xml
-@@ -845,39 +807,12 @@ odm/lib64/camera/components/com.oplus.stats.awb.so
+@@ -864,39 +826,12 @@ odm/lib64/camera/components/com.oplus.stats.awb.so
  odm/lib64/camera/components/com.oplus.stats.pdlib.so
  odm/lib64/camera/components/libcamxoemsatsoftwarefusionwrapper.so
  odm/lib64/camera/components/libcamxoemsatwrapper.so

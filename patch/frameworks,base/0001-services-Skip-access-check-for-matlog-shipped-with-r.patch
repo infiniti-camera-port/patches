@@ -1,0 +1,29 @@
+From a3fa0f63cb92602b0d387e3f5cbe84187e59198f Mon Sep 17 00:00:00 2001
+From: maxwen <max.weninger@gmail.com>
+Date: Sun, 16 Oct 2022 20:47:45 +0200
+Subject: [PATCH 1/8] services: Skip access check for matlog shipped with rom
+
+check for calling package name org.omnirom.logcat
+
+Change-Id: I2106689af3d068105706752148bd17d9522df8f3
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+---
+ .../java/com/android/server/logcat/LogcatManagerService.java | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/services/core/java/com/android/server/logcat/LogcatManagerService.java b/services/core/java/com/android/server/logcat/LogcatManagerService.java
+index 92ac6e2630e8..24d0498a79b7 100644
+--- a/services/core/java/com/android/server/logcat/LogcatManagerService.java
++++ b/services/core/java/com/android/server/logcat/LogcatManagerService.java
+@@ -440,6 +440,11 @@ public final class LogcatManagerService extends SystemService {
+             return;
+         }
+ 
++        if (client.mPackageName.equals("org.omnirom.logcat")) {
++            onAccessApprovedForClient(client);
++            return;
++        }
++
+         if (!shouldShowConfirmationDialog(client)) {
+             onAccessDeclinedForClient(client);
+             return;

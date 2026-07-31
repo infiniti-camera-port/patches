@@ -1,0 +1,40 @@
+From 3686cfb94a037e5df2b70d11eab9ed52efa77bfb Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Wed, 8 Jul 2026 15:00:27 -0600
+Subject: [PATCH 5/7] sm8850-common: Extract the ShareBuffer allocator
+ implementation
+
+libsharebuffer.so lazily dlopens /odm/lib64/libsharebuffer_impl.so and resolves
+createShareBufferAllocator from it, so the implementation has to ship.
+
+It must link the platform libui/libutils from /vendor/lib64. sm8850 builds both
+from source, so remapping the implementation onto private stock-firmware copies
+puts a second instance of each in the process: the allocator is then constructed
+against the stock pair while the facade resolves through the source-built pair,
+the singleton never holds an AndroidShareBufferAllocator, and
+ShareBuffer_CheckBufferPool tail-branches through a vtable slot that does not
+exist, crashing the camera app on every mode switch.
+---
+ proprietary-files.txt | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/proprietary-files.txt b/proprietary-files.txt
+index cdd01e1..4806a92 100644
+--- a/proprietary-files.txt
++++ b/proprietary-files.txt
+@@ -1298,6 +1298,15 @@ vendor/lib64/libwfduibcsrcinterface_vendor.so
+ vendor/lib64/libwfdutils_proprietary.so
+ vendor/lib64/vendor.qti.hardware.wifidisplaysession_aidl-V1-ndk.so;MODULE_SUFFIX=_vendor
+ vendor/lib64/vendor.qti.hardware.wifidisplaysessionl@1.0-halimpl.so
++
++# Camera (Oplus camera port): ShareBuffer allocator, dlopen'd by libsharebuffer.so
++# and resolved via createShareBufferAllocator. It links the platform libui/libutils
++# from /vendor/lib64 - do NOT remap it onto private -stock copies. Doing so puts a
++# second instance of libui/libutils in the process, so the allocator singleton no
++# longer holds an AndroidShareBufferAllocator and ShareBuffer_CheckBufferPool
++# tail-branches through a vtable slot that does not exist.
++odm/lib64/libsharebuffer_impl.so
++
+ # Dolby Vision Service
+ odm/bin/hw/dvs-aidl-service
+ odm/etc/init/dvs-aidl-service.rc

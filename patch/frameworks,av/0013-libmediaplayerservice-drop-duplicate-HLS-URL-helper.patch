@@ -1,0 +1,38 @@
+From bade1ca9f81d7b819e27d39497349531359c3b9f Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Mon, 20 Jul 2026 01:14:31 -0600
+Subject: [PATCH 13/13] libmediaplayerservice: drop duplicate HLS URL helper
+
+(cherry picked from commit e26f12af9ad5d2f7baa32ba24a37ae4abe6a935a)
+---
+ .../libmediaplayerservice/nuplayer/NuPlayer.cpp | 17 -----------------
+ 1 file changed, 17 deletions(-)
+
+diff --git a/media/libmediaplayerservice/nuplayer/NuPlayer.cpp b/media/libmediaplayerservice/nuplayer/NuPlayer.cpp
+index b3fcb94c82..e5df5524bb 100644
+--- a/media/libmediaplayerservice/nuplayer/NuPlayer.cpp
++++ b/media/libmediaplayerservice/nuplayer/NuPlayer.cpp
+@@ -255,23 +255,6 @@ void NuPlayer::setDataSourceAsync(const sp<IStreamSource> &source) {
+     mDataSourceType = DATA_SOURCE_TYPE_STREAM;
+ }
+ 
+-static bool IsHTTPLiveURL(const char *url) {
+-    if (!strncasecmp("http://", url, 7)
+-            || !strncasecmp("https://", url, 8)
+-            || !strncasecmp("file://", url, 7)) {
+-        size_t len = strlen(url);
+-        if (len >= 5 && !strcasecmp(".m3u8", &url[len - 5])) {
+-            return true;
+-        }
+-
+-        if (strstr(url,"m3u8")) {
+-            return true;
+-        }
+-    }
+-
+-    return false;
+-}
+-
+ void NuPlayer::setDataSourceAsync(
+         const sp<IMediaHTTPService> &httpService,
+         const char *url,

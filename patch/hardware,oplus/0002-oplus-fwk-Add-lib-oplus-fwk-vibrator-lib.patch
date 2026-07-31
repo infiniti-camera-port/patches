@@ -1,0 +1,33 @@
+From e89ffec0136b54df140574d3333ae1cc303b63a9 Mon Sep 17 00:00:00 2001
+From: Kill3rEz <98993017+Kill3rEz@users.noreply.github.com>
+Date: Sat, 11 Jul 2026 13:04:11 +0800
+Subject: [PATCH 02/22] oplus-fwk: Add lib oplus-fwk-vibrator-lib
+
+Use our vibrator shims instead of those provided in "base: Implement mock oplus LinearmotorVibratorService"
+---
+ oplus-fwk/Android.bp | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/oplus-fwk/Android.bp b/oplus-fwk/Android.bp
+index 019b81c5..f544a4d2 100644
+--- a/oplus-fwk/Android.bp
++++ b/oplus-fwk/Android.bp
+@@ -13,3 +13,18 @@ java_library {
+         "src/**/*.java",
+     ],
+ }
++
++java_library {
++    name: "oplus-fwk-vibrator-lib",
++    installable: false,
++    sdk_version: "core_platform",
++    libs: [
++        "framework-minus-apex-headers",
++    ],
++
++    srcs: [
++        "src/com/oplus/os/LinearmotorVibrator.java",
++        "src/com/oplus/os/ILinearmotorVibratorService.java",
++        "src/com/oplus/os/WaveformEffect.java",
++    ],
++}

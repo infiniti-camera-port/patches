@@ -1,0 +1,222 @@
+From 5c65f8b3f9185c03728cf3f9fcffd5f21c8669dc Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 7 Jul 2026 15:57:12 -0600
+Subject: [PATCH 1/7] sm8850-common: Add Dolby Vision Service
+
+Source and register the Dolby Vision codecs from odm/etc, ship the
+dvs-aidl-service binary with its init rc and vintf manifest, and wire up the
+matching sepolicy and properties.
+
+Only the 64-bit vendor.dolby.dvs-V1-ndk.so is declared; the 32-bit variant is
+not loadable on this tree.
+---
+ BoardConfigCommon.mk              |  1 +
+ common.mk                         |  1 +
+ extract-files.py                  | 29 ++++++++++++++++++++++-
+ odm.prop                          |  5 ++++
+ proprietary-files.txt             |  6 +++++
+ sepolicy/vendor/dvs_aidl.te       | 38 +++++++++++++++++++++++++++++++
+ sepolicy/vendor/file_contexts     |  1 +
+ sepolicy/vendor/property.te       |  1 +
+ sepolicy/vendor/property_contexts |  2 ++
+ sepolicy/vendor/service_contexts  |  1 +
+ vintf/device_framework_matrix.xml | 10 ++++++++
+ 11 files changed, 94 insertions(+), 1 deletion(-)
+ create mode 100644 sepolicy/vendor/dvs_aidl.te
+ create mode 100644 sepolicy/vendor/file_contexts
+ create mode 100644 sepolicy/vendor/property.te
+ create mode 100644 sepolicy/vendor/property_contexts
+ create mode 100644 sepolicy/vendor/service_contexts
+ create mode 100644 vintf/device_framework_matrix.xml
+
+diff --git a/BoardConfigCommon.mk b/BoardConfigCommon.mk
+index 682db4b..d46e1c2 100644
+--- a/BoardConfigCommon.mk
++++ b/BoardConfigCommon.mk
+@@ -218,6 +218,7 @@ VENDOR_SECURITY_PATCH := $(BOOT_SECURITY_PATCH)
+ # SEPolicy
+ include device/qcom/sepolicy_vndr/SEPolicy.mk
+ include hardware/oplus/sepolicy/qti/SEPolicy.mk
++BOARD_VENDOR_SEPOLICY_DIRS += $(COMMON_PATH)/sepolicy/vendor
+ 
+ # Verified Boot
+ BOARD_AVB_ENABLE := true
+diff --git a/common.mk b/common.mk
+index feda95d..172ef4b 100644
+--- a/common.mk
++++ b/common.mk
+@@ -455,6 +455,7 @@ endif
+ # VINTF
+ DEVICE_FRAMEWORK_COMPATIBILITY_MATRIX_FILE += \
+     hardware/oplus/vintf/device_framework_matrix.xml \
++    device/oneplus/sm8850-common/vintf/device_framework_matrix.xml \
+     hardware/qcom-caf/common/vendor_framework_compatibility_matrix.xml
+ DEVICE_MANIFEST_FILE := \
+     $(LOCAL_PATH)/vintf/manifest_canoe.xml
+diff --git a/extract-files.py b/extract-files.py
+index 57d9bd2..b1a0398 100755
+--- a/extract-files.py
++++ b/extract-files.py
+@@ -95,11 +95,38 @@ blob_fixups: blob_fixups_user_type = {
+         .replace_needed('libprotobuf-cpp-lite.so', 'libprotobuf-cpp-lite-21.12.so'),
+     'system_ext/lib64/libwfdnative.so': blob_fixup()
+         .add_needed('libinput_shim.so'),
++    # Inject Dolby Vision codec include into every non-vendor canoe variant (DV nodes live in
++    # odm/etc/media_codecs_dolby_vision.xml, remapped to vendor/etc/ so MediaCodecsXmlParser
++    # can resolve <Include href="..."/> relative to the same /vendor/etc/ search dir).
++    # Empirically verified on device: pushing dolby_vision.xml to /vendor/etc/ and adding
++    # the Include to canoe_v2.xml caused c2.qti.dv.{decoder,decoder.secure,encoder} to appear
++    # in IComponentStore/default after reboot — confirmed via dumpsys.
+     (
++        'vendor/etc/media_codecs_canoe_sku1.xml',
++        'vendor/etc/media_codecs_canoe_sku2.xml',
+         'vendor/etc/media_codecs_canoe_sku3.xml',
++        'vendor/etc/media_codecs_canoe_v1.xml',
+         'vendor/etc/media_codecs_canoe_v2.xml',
+     ): blob_fixup()
+-        .regex_replace('.*media_codecs_(google_audio|google_c2|google_telephony|google_video|vendor_audio).*\n', ''),
++        .regex_replace('.*media_codecs_(google_audio|google_c2|google_telephony|google_video|vendor_audio).*\n', '')
++        .regex_replace(r'([ \t]*</MediaCodecs>)', r'    <Include href="media_codecs_dolby_vision.xml" />\n\1'),
++    # Dolby Vision: the c2.qti.dv decoder/decoder.secure/encoder nodes ship COMMENTED in the
++    # *_vendor.xml codec variants — and those (not the non-vendor canoe_v2.xml) are the files the
++    # framework's Codec2InfoBuilder parses. Un-comment them in place so MediaCodecList registers DV
++    # and VIDEO -> Dolby Vision recording can create c2.qti.dv.encoder (else it aborts with no file).
++    # Mirrors OnePlus stock (ships them commented) and the sm8750/sun fixup. Device-verified.
++    (
++        'vendor/etc/media_codecs_canoe_v1_vendor.xml',
++        'vendor/etc/media_codecs_canoe_v2_vendor.xml',
++        'vendor/etc/media_codecs_canoe_sku1_vendor.xml',
++        'vendor/etc/media_codecs_canoe_sku2_vendor.xml',
++    ): blob_fixup()
++        .regex_replace(r'<!--\s*<MediaCodec name="c2\.qti\.dv\.decoder" type="video/dolby-vision" >',
++                       r'<MediaCodec name="c2.qti.dv.decoder" type="video/dolby-vision" >')
++        .regex_replace(r'\n[ \t]*-->(\s*</Decoders>)', r'\1')
++        .regex_replace(r'<!--\s*<MediaCodec name="c2\.qti\.dv\.encoder" type="video/dolby-vision">',
++                       r'<MediaCodec name="c2.qti.dv.encoder" type="video/dolby-vision">')
++        .regex_replace(r'\n[ \t]*-->(\s*</Encoders>)', r'\1'),
+     (
+         'vendor/lib64/hw/android.hardware.bluetooth.audio_sw.so',
+         'vendor/lib64/hw/libaudiocorehal.default.so',
+diff --git a/odm.prop b/odm.prop
+index 8d67bad..cac37f6 100644
+--- a/odm.prop
++++ b/odm.prop
+@@ -12,3 +12,8 @@ ro.vendor.oplus.radio.carrier_detect_mode=1
+ 
+ # SVN
+ ro.build.version.svn=49
++
++# Dolby Vision
++ro.vendor.oplus.dolby_vision_dpu=1
++ro.vendor.oplus.dolby_vision_dpu.dvs=1
++ro.vendor.oplus.dolby_vision.multi_cfg=1
+diff --git a/proprietary-files.txt b/proprietary-files.txt
+index bb210bb..cdd01e1 100644
+--- a/proprietary-files.txt
++++ b/proprietary-files.txt
+@@ -578,6 +578,7 @@ vendor/etc/media_codecs_canoe_v2.xml
+ vendor/etc/media_codecs_canoe_v2_vendor.xml
+ vendor/etc/media_codecs_canoe_v3.xml
+ vendor/etc/media_codecs_canoe_v3_vendor.xml
++odm/etc/media_codecs_dolby_vision.xml:vendor/etc/media_codecs_dolby_vision.xml
+ vendor/etc/media_codecs_performance_canoe_sku1.xml
+ vendor/etc/media_codecs_performance_canoe_sku1_vendor.xml
+ vendor/etc/media_codecs_performance_canoe_sku2.xml
+@@ -1297,3 +1298,8 @@ vendor/lib64/libwfduibcsrcinterface_vendor.so
+ vendor/lib64/libwfdutils_proprietary.so
+ vendor/lib64/vendor.qti.hardware.wifidisplaysession_aidl-V1-ndk.so;MODULE_SUFFIX=_vendor
+ vendor/lib64/vendor.qti.hardware.wifidisplaysessionl@1.0-halimpl.so
++# Dolby Vision Service
++odm/bin/hw/dvs-aidl-service
++odm/etc/init/dvs-aidl-service.rc
++odm/etc/vintf/manifest/dvs-aidl-service.xml
++odm/lib64/vendor.dolby.dvs-V1-ndk.so
+diff --git a/sepolicy/vendor/dvs_aidl.te b/sepolicy/vendor/dvs_aidl.te
+new file mode 100644
+index 0000000..df3c41d
+--- /dev/null
++++ b/sepolicy/vendor/dvs_aidl.te
+@@ -0,0 +1,38 @@
++attribute dvs_aidl;
++attribute dvs_aidl_client;
++attribute dvs_aidl_server;
++
++type dvs_aidl_default, domain;
++type dvs_aidl_default_exec, exec_type, vendor_file_type, file_type;
++type dvs_aidl_service, service_manager_type;
++
++typeattribute dvs_aidl_default dvs_aidl;
++typeattribute dvs_aidl_default dvs_aidl_server;
++
++typeattribute hal_graphics_composer_default dvs_aidl_client;
++typeattribute mediaserver dvs_aidl_client;
++typeattribute platform_app dvs_aidl_client;
++typeattribute priv_app dvs_aidl_client;
++typeattribute surfaceflinger dvs_aidl_client;
++typeattribute system_app dvs_aidl_client;
++typeattribute untrusted_app dvs_aidl_client;
++typeattribute untrusted_app_25 dvs_aidl_client;
++typeattribute untrusted_app_27 dvs_aidl_client;
++typeattribute untrusted_app_29 dvs_aidl_client;
++typeattribute untrusted_app_30 dvs_aidl_client;
++typeattribute untrusted_app_32 dvs_aidl_client;
++
++binder_call(dvs_aidl_client, dvs_aidl_server)
++binder_call(dvs_aidl_server, dvs_aidl_client)
++set_prop(dvs_aidl_server, vendor_dolbyv_prop)
++allow dvs_aidl_client dvs_aidl_service:service_manager find;
++
++init_daemon_domain(dvs_aidl_default)
++binder_use(dvs_aidl_default)
++binder_call(dvs_aidl_default, system_server)
++add_service(dvs_aidl_default, dvs_aidl_service)
++
++allow dvs_aidl_default fwk_sensor_hwservice:hwservice_manager find;
++allow dvs_aidl_default fwk_sensor_service:service_manager find;
++allow dvs_aidl_default vendor_sysfs_graphics:dir { read open search };
++allow dvs_aidl_default vendor_sysfs_graphics:file { read getattr open };
+diff --git a/sepolicy/vendor/file_contexts b/sepolicy/vendor/file_contexts
+new file mode 100644
+index 0000000..d779e95
+--- /dev/null
++++ b/sepolicy/vendor/file_contexts
+@@ -0,0 +1 @@
++/(vendor|odm)/bin/hw/dvs-aidl-service u:object_r:dvs_aidl_default_exec:s0
+diff --git a/sepolicy/vendor/property.te b/sepolicy/vendor/property.te
+new file mode 100644
+index 0000000..36a3c80
+--- /dev/null
++++ b/sepolicy/vendor/property.te
+@@ -0,0 +1 @@
++vendor_internal_prop(vendor_dolbyv_prop)
+diff --git a/sepolicy/vendor/property_contexts b/sepolicy/vendor/property_contexts
+new file mode 100644
+index 0000000..d9f9b3a
+--- /dev/null
++++ b/sepolicy/vendor/property_contexts
+@@ -0,0 +1,2 @@
++persist.vendor.dolbyv. u:object_r:vendor_dolbyv_prop:s0
++vendor.dolbyv.         u:object_r:vendor_dolbyv_prop:s0
+diff --git a/sepolicy/vendor/service_contexts b/sepolicy/vendor/service_contexts
+new file mode 100644
+index 0000000..37d1690
+--- /dev/null
++++ b/sepolicy/vendor/service_contexts
+@@ -0,0 +1 @@
++vendor.dolby.dvs.IDvs/default u:object_r:dvs_aidl_service:s0
+diff --git a/vintf/device_framework_matrix.xml b/vintf/device_framework_matrix.xml
+new file mode 100644
+index 0000000..dcbc2be
+--- /dev/null
++++ b/vintf/device_framework_matrix.xml
+@@ -0,0 +1,10 @@
++<compatibility-matrix version="4.0" type="framework">
++    <hal format="aidl" optional="true">
++        <name>vendor.dolby.dvs</name>
++        <version>1</version>
++        <interface>
++            <name>IDvs</name>
++            <instance>default</instance>
++        </interface>
++    </hal>
++</compatibility-matrix>

@@ -1,4 +1,4 @@
-From 76b7a25df1e7533428aba5d84b619e568842236b Mon Sep 17 00:00:00 2001
+From 1824830de09136ecaaa077c20e7442c1faf9da1a Mon Sep 17 00:00:00 2001
 From: spkal01 <kalligeross@gmail.com>
 Date: Sun, 31 May 2026 17:46:41 +0300
 Subject: [PATCH 2/3] sepolicy: Fix neverallow triggered by opluscamera_app

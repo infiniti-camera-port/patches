@@ -1,0 +1,23 @@
+From 9c6b994a4437f4004e1911379158b54d825b744e Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Wed, 29 Jul 2026 22:49:57 -0600
+Subject: [PATCH 7/7] sm8850-common: attribute the QNN stub note to SM8850, not
+ infiniti
+
+---
+ extract-files.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/extract-files.py b/extract-files.py
+index 321d4bb..23eea51 100755
+--- a/extract-files.py
++++ b/extract-files.py
+@@ -173,7 +173,7 @@ blob_fixups: blob_fixups_user_type = {
+     # APS turbo fix: on the port, the camera app's classloader namespace cannot dlopen the /odm
+     # ArcSoft/QNN helper libs (couple-HDR, turbo, QNN HTP), which gates the DSP/QNN path so turbo
+     # can't run. Exposing them as vendor public libraries lets the app namespace resolve them.
+-    # Adapted from sm8750-common; infiniti uses QnnHtpV81Stub (not V79).
++    # Adapted from sm8750-common; SM8850 (canoe) uses QnnHtpV81Stub (not V79).
+     'vendor/etc/public.libraries.txt': blob_fixup()
+         .add_line_if_missing('libarcsoft_hdr_couple_api.so')
+         .add_line_if_missing('libarcsoft_high_dynamic_range_couple.so')

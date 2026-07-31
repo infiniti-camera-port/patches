@@ -1,0 +1,439 @@
+From 1399c74ef2426ec6a58450d872bb65c38b758af9 Mon Sep 17 00:00:00 2001
+From: osm1019 <osm1019@gmail.com>
+Date: Sat, 11 Jul 2026 16:04:32 -0700
+Subject: [PATCH 04/22] oplus-fwk: add gallery-share icon helpers + ViewWrapper
+ (fix blank share items)
+
+The OPlus gallery's own share sheet (com.oplus.gallery.sharepage.*) showed target
+labels with no icons / blank items and dead taps, because OplusGalleryLoadIconHelper
+belongs in the oplus-fwk boot jar but was missing, so the gallery fell back to its
+bundled null-stub (getInstance/getOplusItem -> null). Add the com.oplus.resolver.*
+helpers + com.oplus.widget.OplusItem (from AlphaDroid alpha-16.2 ae13ee26) and the two
+inner/view ViewWrapper stubs with the setScroll{X,Y}ForColor fix (0f21520, writes
+mScrollX/mScrollY directly instead of recursing) for the share/'More' list scroll.
+
+Additive, self-contained (only cross-ref is OplusItem), and NONE reference camera2/
+metadata -- so this is safe and does NOT reintroduce the green-capture regression from
+the full 33-stub import (that was the CameraMetadataNative/CaptureResult wrappers, kept
+out here). Fixes gallery share on both dodge and salami (shared oplus-fwk). Ref kiro-143/149.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Change-Id: Icc82f06dc7629fe90c1acdf5faed9b9883b8e174
+---
+ .../src/com/color/inner/view/ViewWrapper.java |  29 ++++
+ .../src/com/oplus/inner/view/ViewWrapper.java |  29 ++++
+ .../IOplusResolverCustomIconHelper.java       |  21 +++
+ .../resolver/OplusGalleryLoadIconHelper.java  |  65 +++++++
+ .../OplusResolverCustomIconHelper.java        |  65 +++++++
+ oplus-fwk/src/com/oplus/widget/OplusItem.java | 158 ++++++++++++++++++
+ 6 files changed, 367 insertions(+)
+ create mode 100644 oplus-fwk/src/com/color/inner/view/ViewWrapper.java
+ create mode 100644 oplus-fwk/src/com/oplus/inner/view/ViewWrapper.java
+ create mode 100644 oplus-fwk/src/com/oplus/resolver/IOplusResolverCustomIconHelper.java
+ create mode 100644 oplus-fwk/src/com/oplus/resolver/OplusGalleryLoadIconHelper.java
+ create mode 100644 oplus-fwk/src/com/oplus/resolver/OplusResolverCustomIconHelper.java
+ create mode 100644 oplus-fwk/src/com/oplus/widget/OplusItem.java
+
+diff --git a/oplus-fwk/src/com/color/inner/view/ViewWrapper.java b/oplus-fwk/src/com/color/inner/view/ViewWrapper.java
+new file mode 100644
+index 00000000..ea4bab55
+--- /dev/null
++++ b/oplus-fwk/src/com/color/inner/view/ViewWrapper.java
+@@ -0,0 +1,29 @@
++package com.color.inner.view;
++
++import android.view.View;
++import java.lang.reflect.Field;
++
++public class ViewWrapper {
++    // COUI scroll containers (COUINestedScrollView/COUIScrollView) commit their scroll
++    // offset through these accessors. They MUST write View.mScrollX/mScrollY directly:
++    // calling the public View.setScrollX/setScrollY re-dispatches to the overridden
++    // scrollTo(), which calls back here -> infinite recursion -> StackOverflowError and
++    // the list never scrolls. This mirrors the real ColorOS "inner" accessor.
++    public static void setScrollXForColor(View view, int scrollX) {
++        setField(view, "mScrollX", scrollX);
++    }
++
++    public static void setScrollYForColor(View view, int scrollY) {
++        setField(view, "mScrollY", scrollY);
++    }
++
++    private static void setField(View view, String name, int value) {
++        if (view == null) return;
++        try {
++            Field f = View.class.getDeclaredField(name);
++            f.setAccessible(true);
++            f.setInt(view, value);
++        } catch (ReflectiveOperationException ignored) {
++        }
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/inner/view/ViewWrapper.java b/oplus-fwk/src/com/oplus/inner/view/ViewWrapper.java
+new file mode 100644
+index 00000000..03b3397e
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/inner/view/ViewWrapper.java
+@@ -0,0 +1,29 @@
++package com.oplus.inner.view;
++
++import android.view.View;
++import java.lang.reflect.Field;
++
++public class ViewWrapper {
++    // COUI scroll containers (COUINestedScrollView/COUIScrollView) commit their scroll
++    // offset through these accessors. They MUST write View.mScrollX/mScrollY directly:
++    // calling the public View.setScrollX/setScrollY re-dispatches to the overridden
++    // scrollTo(), which calls back here -> infinite recursion -> StackOverflowError and
++    // the list never scrolls. This mirrors the real ColorOS "inner" accessor.
++    public static void setScrollXForColor(View view, int scrollX) {
++        setField(view, "mScrollX", scrollX);
++    }
++
++    public static void setScrollYForColor(View view, int scrollY) {
++        setField(view, "mScrollY", scrollY);
++    }
++
++    private static void setField(View view, String name, int value) {
++        if (view == null) return;
++        try {
++            Field f = View.class.getDeclaredField(name);
++            f.setAccessible(true);
++            f.setInt(view, value);
++        } catch (ReflectiveOperationException ignored) {
++        }
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/resolver/IOplusResolverCustomIconHelper.java b/oplus-fwk/src/com/oplus/resolver/IOplusResolverCustomIconHelper.java
+new file mode 100644
+index 00000000..f4ed5789
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/resolver/IOplusResolverCustomIconHelper.java
+@@ -0,0 +1,21 @@
++package com.oplus.resolver;
++
++import android.content.Intent;
++import android.content.pm.PackageManager;
++import android.content.pm.ResolveInfo;
++import android.graphics.drawable.Drawable;
++import com.oplus.widget.OplusItem;
++
++/* loaded from: classes.dex */
++public interface IOplusResolverCustomIconHelper {
++    public static final IOplusResolverCustomIconHelper DEFAULT = new IOplusResolverCustomIconHelper() { // from class: com.oplus.resolver.IOplusResolverCustomIconHelper.1
++    };
++
++    default OplusItem getAppInfo(Intent originIntent, ResolveInfo info, PackageManager mPm) {
++        return new OplusItem();
++    }
++
++    default Drawable oplusLoadIconForResolveInfo(Intent originIntent, ResolveInfo info, PackageManager mPm) {
++        return null;
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/resolver/OplusGalleryLoadIconHelper.java b/oplus-fwk/src/com/oplus/resolver/OplusGalleryLoadIconHelper.java
+new file mode 100644
+index 00000000..ac33418e
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/resolver/OplusGalleryLoadIconHelper.java
+@@ -0,0 +1,65 @@
++package com.oplus.resolver;
++
++import android.content.Context;
++import android.content.Intent;
++import android.content.pm.PackageManager;
++import android.content.pm.ResolveInfo;
++import android.graphics.drawable.Drawable;
++import android.os.UserHandle;
++import android.util.Log;
++import com.oplus.widget.OplusItem;
++
++/* loaded from: classes.dex */
++public class OplusGalleryLoadIconHelper {
++    private static final String FEATURE_PACKAGE = "com.oplus.resolver.OplusResolverCustomIconHelper";
++    private static final String TAG = "OplusGalleryLoadIconHelper";
++    private static volatile OplusGalleryLoadIconHelper sLoadIconHelper;
++    private Context mContext;
++    private IOplusResolverCustomIconHelper mCustomIconHelper;
++    private UserHandle mUserHandle;
++
++    public static OplusGalleryLoadIconHelper getInstance(Context context) {
++        if (sLoadIconHelper == null) {
++            synchronized (OplusGalleryLoadIconHelper.class) {
++                if (sLoadIconHelper == null) {
++                    sLoadIconHelper = new OplusGalleryLoadIconHelper(context.getApplicationContext());
++                }
++            }
++        }
++        return sLoadIconHelper;
++    }
++
++    private OplusGalleryLoadIconHelper(Context context) {
++        this.mCustomIconHelper = IOplusResolverCustomIconHelper.DEFAULT;
++        this.mContext = context;
++        try {
++            this.mCustomIconHelper = (IOplusResolverCustomIconHelper) Class.forName(FEATURE_PACKAGE).getDeclaredConstructor(Context.class).newInstance(context);
++        } catch (Exception e) {
++            Log.e(TAG, "cannot constructor error:" + e.getMessage());
++        }
++        this.mUserHandle = UserHandle.of(context.getUserId());
++    }
++
++    public Drawable loadUxIcon(Intent originIntent, ResolveInfo info) {
++        PackageManager packageManager = this.mContext.getPackageManager();
++        Drawable drawable = this.mCustomIconHelper.oplusLoadIconForResolveInfo(originIntent, info, packageManager);
++        if (drawable != null) {
++            packageManager.getUserBadgedIcon(drawable, this.mUserHandle);
++        }
++        return drawable;
++    }
++
++    public OplusItem getOplusItem(Intent originIntent, ResolveInfo info, PackageManager mPm) {
++        OplusItem item = this.mCustomIconHelper.getAppInfo(originIntent, info, mPm);
++        if (item.getIcon() != null) {
++            item.setIcon(mPm.getUserBadgedIcon(item.getIcon(), this.mUserHandle));
++        }
++        return item;
++    }
++
++    public void updateUserHandle(UserHandle userHandle) {
++        if (userHandle != null) {
++            this.mUserHandle = userHandle;
++        }
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/resolver/OplusResolverCustomIconHelper.java b/oplus-fwk/src/com/oplus/resolver/OplusResolverCustomIconHelper.java
+new file mode 100644
+index 00000000..01a4463e
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/resolver/OplusResolverCustomIconHelper.java
+@@ -0,0 +1,65 @@
++package com.oplus.resolver;
++
++import android.content.Context;
++import android.content.Intent;
++import android.content.pm.ApplicationInfo;
++import android.content.pm.PackageManager;
++import android.content.pm.ResolveInfo;
++import android.graphics.drawable.Drawable;
++import com.oplus.widget.OplusItem;
++
++/**
++ * AOSP-backed implementation of the resolver custom-icon helper.
++ *
++ * The stock ColorOS OplusResolverCustomIconHelper resolves themed/UX icons through
++ * private framework internals (IPackageManagerExt#getUxIconPackageManagerExt,
++ * IOplusThemeManager, OplusResolverInfoHelper, ...) that do not exist on AOSP.
++ *
++ * This port keeps only the part the gallery share grid actually needs: a non-null
++ * OplusItem carrying the app's icon + label, loaded purely via the standard
++ * PackageManager / ResolveInfo APIs. OplusGalleryLoadIconHelper picks this class up
++ * by reflection (FEATURE_PACKAGE); without a populated icon here, the gallery's
++ * ResolveInfoLoader produces an "empty" item and never attaches the target click
++ * listener (dead share targets).
++ */
++public class OplusResolverCustomIconHelper implements IOplusResolverCustomIconHelper {
++    private static final String TAG = "OplusResolverCustomIconHelper";
++    private final Context mContext;
++
++    public OplusResolverCustomIconHelper(Context context, int compatibleArgs) {
++        this(context);
++    }
++
++    public OplusResolverCustomIconHelper(Context context) {
++        this.mContext = context;
++    }
++
++    @Override
++    public OplusItem getAppInfo(Intent originIntent, ResolveInfo info, PackageManager mPm) {
++        if (info == null || mPm == null) {
++            return null;
++        }
++        OplusItem appInfo = new OplusItem();
++        appInfo.setText(info.loadLabel(mPm).toString());
++        if (info.activityInfo != null) {
++            appInfo.setPackageName(info.activityInfo.packageName);
++            ApplicationInfo applicationInfo = info.activityInfo.applicationInfo;
++            if (applicationInfo != null) {
++                String label = applicationInfo.loadLabel(mPm).toString();
++                if (!appInfo.getText().equals(label)) {
++                    appInfo.setLabel(label);
++                }
++            }
++        }
++        appInfo.setIcon(oplusLoadIconForResolveInfo(originIntent, info, mPm));
++        return appInfo;
++    }
++
++    @Override
++    public Drawable oplusLoadIconForResolveInfo(Intent originIntent, ResolveInfo info, PackageManager mPm) {
++        if (info == null || mPm == null) {
++            return null;
++        }
++        return info.loadIcon(mPm);
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/widget/OplusItem.java b/oplus-fwk/src/com/oplus/widget/OplusItem.java
+new file mode 100644
+index 00000000..bda4d333
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/widget/OplusItem.java
+@@ -0,0 +1,158 @@
++package com.oplus.widget;
++
++import android.content.Context;
++import android.graphics.drawable.Drawable;
++
++/* loaded from: classes.dex */
++public class OplusItem {
++    public static final int ITEM_FIFTH = 4;
++    public static final int ITEM_FIRST = 0;
++    public static final int ITEM_FOURTH = 3;
++    public static final int ITEM_SECOND = 1;
++    public static final int ITEM_THIRD = 2;
++    private Drawable mBackgroud;
++    private Context mContext;
++    private Drawable mIcon;
++    private String mLabel;
++    private OnItemClickListener mOnItemClickListener;
++    private String mPackageName;
++    private boolean mPinned = false;
++    private String mText;
++
++    /* loaded from: classes.dex */
++    public interface OnItemClickListener {
++        void OnMenuItemClick(int i);
++    }
++
++    /* loaded from: classes.dex */
++    public static class Builder {
++        private OplusItem ci = new OplusItem();
++
++        public Builder(Context context) {
++            this.ci.mContext = context;
++        }
++
++        public Builder setText(String text) {
++            this.ci.mText = text;
++            return this;
++        }
++
++        public Builder setText(int textResId) {
++            this.ci.mText = this.ci.getContext().getString(textResId);
++            return this;
++        }
++
++        public Builder setLabel(int labelId) {
++            this.ci.mLabel = this.ci.getContext().getString(labelId);
++            return this;
++        }
++
++        public Builder setLabel(String label) {
++            this.ci.mLabel = label;
++            return this;
++        }
++
++        public Builder setIcon(Drawable icon) {
++            this.ci.mIcon = icon;
++            return this;
++        }
++
++        public Builder setIcon(int iconResId) {
++            this.ci.mIcon = this.ci.getContext().getResources().getDrawable(iconResId);
++            return this;
++        }
++
++        public Builder setBackgroud(Drawable background) {
++            this.ci.mBackgroud = background;
++            return this;
++        }
++
++        public Builder setBackgroud(int bgResId) {
++            this.ci.mBackgroud = this.ci.getContext().getResources().getDrawable(bgResId);
++            return this;
++        }
++
++        public Builder setOnItemClickListener(OnItemClickListener e) {
++            this.ci.mOnItemClickListener = e;
++            return this;
++        }
++
++        private Builder setPinned(boolean pinned) {
++            this.ci.mPinned = pinned;
++            return this;
++        }
++
++        public Builder setPackageName(String packageName) {
++            this.ci.mPackageName = packageName;
++            return this;
++        }
++
++        public OplusItem create() {
++            return this.ci;
++        }
++    }
++
++    public String getText() {
++        return this.mText;
++    }
++
++    public void setText(String mText) {
++        this.mText = mText;
++    }
++
++    public String getLabel() {
++        return this.mLabel;
++    }
++
++    public void setLabel(String subLabel) {
++        this.mLabel = subLabel;
++    }
++
++    public Drawable getIcon() {
++        return this.mIcon;
++    }
++
++    public void setIcon(Drawable mIcon) {
++        this.mIcon = mIcon;
++    }
++
++    public Drawable getBackgroud() {
++        return this.mBackgroud;
++    }
++
++    public void setBackgroud(Drawable backgroud) {
++        this.mBackgroud = backgroud;
++    }
++
++    public Context getContext() {
++        return this.mContext;
++    }
++
++    public void setContext(Context context) {
++        this.mContext = context;
++    }
++
++    public OnItemClickListener getOnItemClickListener() {
++        return this.mOnItemClickListener;
++    }
++
++    public void setOnItemClickListener(OnItemClickListener onItemClickListener) {
++        this.mOnItemClickListener = onItemClickListener;
++    }
++
++    public boolean isPinned() {
++        return this.mPinned;
++    }
++
++    public void setPinned(Boolean pinned) {
++        this.mPinned = pinned.booleanValue();
++    }
++
++    public String getPackageName() {
++        return this.mPackageName;
++    }
++
++    public void setPackageName(String packageName) {
++        this.mPackageName = packageName;
++    }
++}

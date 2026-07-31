@@ -1,0 +1,50 @@
+From a9cae2d5782cab6e2293cf0d3636acca8adc8a74 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 7 Jul 2026 16:02:40 -0600
+Subject: [PATCH 5/8] services: wire oplus-fwk access-control and isEncryptPass
+ services into SystemServer
+
+(cherry picked from commit d40fc4e3d01a3df11269f8bf6542ed11bcb2aa0a)
+---
+ services/Android.bp                                | 1 +
+ services/java/com/android/server/SystemServer.java | 8 ++++++++
+ 2 files changed, 9 insertions(+)
+
+diff --git a/services/Android.bp b/services/Android.bp
+index 481694280bf5..2a4f50be9180 100644
+--- a/services/Android.bp
++++ b/services/Android.bp
+@@ -379,6 +379,7 @@ java_library {
+         "android.hidl.manager-V1.0-java",
+         "framework-tethering.stubs.module_lib",
+         "keepanno-annotations",
++        "oplus-fwk",
+         "service-art.stubs.system_server",
+         "service-permission.stubs.system_server",
+         "service-rkp.stubs.system_server",
+diff --git a/services/java/com/android/server/SystemServer.java b/services/java/com/android/server/SystemServer.java
+index c31e6f50947c..dfc32abc6719 100644
+--- a/services/java/com/android/server/SystemServer.java
++++ b/services/java/com/android/server/SystemServer.java
+@@ -321,6 +321,7 @@ import com.android.server.webkit.WebViewUpdateService;
+ import com.android.server.wm.ActivityTaskManagerService;
+ import com.android.server.wm.WindowManagerGlobalLock;
+ import com.android.server.wm.WindowManagerService;
++import com.oplus.server.OplusAccessControlManagerService;
+ 
+ import dalvik.system.VMDebug;
+ import dalvik.system.VMRuntime;
+@@ -1677,6 +1678,13 @@ public final class SystemServer implements Dumpable {
+             SQLiteCompatibilityWalFlags.reset();
+             t.traceEnd();
+ 
++            t.traceBegin("StartOplusAccessControlManagerService");
++            OplusAccessControlManagerService oplusAccessControl =
++                    new OplusAccessControlManagerService(context);
++            ServiceManager.addService("oplus_accesscontrol", oplusAccessControl);
++            oplusAccessControl.onSystemReady();
++            t.traceEnd();
++
+             // Records errors and logs, for example wtf()
+             // Currently this service indirectly depends on SettingsProvider so do this after
+             // InstallSystemProviders.

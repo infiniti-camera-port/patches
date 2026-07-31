@@ -1,0 +1,304 @@
+From 7cba46722f61074a5df5f6978c75a940ca960bbd Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 7 Jul 2026 15:58:49 -0600
+Subject: [PATCH 17/22] oplus-fwk: add more camera stubs (HeifWriter,
+ BlurParam, camera2)
+
+(cherry picked from commit 0ad03d1b656f90a31c86ec5e966c2dd7d0d97aa4)
+---
+ .../src/com/oplus/media/OplusHeifWriter.java  | 135 ++++++++++++++++++
+ .../src/com/oplus/view/ViewRootManager.java   |   1 +
+ .../camera2/CameraCharacteristics.java        |  20 +++
+ .../hardware/camera2/CameraMetadata.java      |  13 ++
+ .../hardware/camera2/CaptureResult.java       |  57 ++++++++
+ .../camera2/impl/CameraMetadataNative.java    |  17 +++
+ 6 files changed, 243 insertions(+)
+ create mode 100644 oplus-fwk/src/com/oplus/media/OplusHeifWriter.java
+ create mode 100644 oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CameraCharacteristics.java
+ create mode 100644 oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CameraMetadata.java
+ create mode 100644 oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CaptureResult.java
+ create mode 100644 oplus-fwk/src/com/oplus/wrapper/hardware/camera2/impl/CameraMetadataNative.java
+
+diff --git a/oplus-fwk/src/com/oplus/media/OplusHeifWriter.java b/oplus-fwk/src/com/oplus/media/OplusHeifWriter.java
+new file mode 100644
+index 00000000..0c97efe0
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/media/OplusHeifWriter.java
+@@ -0,0 +1,135 @@
++/*
++ * Copyright (C) 2024 The LineageOS Project
++ *
++ * SPDX-License-Identifier: Apache-2.0
++ *
++ * Reconstructed from OOS 16.0.8 oplus-framework.jar (com.oplus.media.OplusHeifWriter)
++ * to restore the OEM HEIF/live-photo writer JNI shim that the LineageOS port dropped.
++ * Native side: /system_ext/lib64/liboplusheifwriter.so (register_android_graphic_HeifWriter).
++ * Method names, native signatures and field names MUST match the .so's JNI bindings exactly
++ * (including the original "Destory"/"mcro" spellings).
++ */
++
++package com.oplus.media;
++
++import android.graphics.Bitmap;
++import android.util.Log;
++
++import java.io.FileDescriptor;
++
++public class OplusHeifWriter {
++    private static final String TAG = "OplusHeifWriter_Java";
++
++    public static final int COLOR_FMT_YUV420Planar = 0;
++    public static final int COLOR_FMT_P010 = 1;
++    public static final int COLOR_FMT_RGBA8888 = 2;
++    public static final int COLOR_FMT_NV12 = 3;
++    public static final int COLOR_FMT_NV21 = 4;
++    public static final int COLOR_FMT_MAX = 5;
++
++    static final int maxValue = 100;
++    static final int minValue = 0;
++
++    private long mNativeObject;
++
++    static {
++        Log.v(TAG, "loadLibrary");
++        System.loadLibrary("oplusheifwriter");
++    }
++
++    public OplusHeifWriter() {
++        mNativeObject = nativeSetup();
++    }
++
++    private static native long nativeSetup();
++
++    private static native long nativeCreate(long nativeObject, int width, int height,
++            int strideWidth, int strideHeight, int fmt, int quality, int rotation);
++
++    private static native long nativeCreateLivePhoto(long nativeObject, byte[] yuvBuffer,
++            byte[] exifData, FileDescriptor outFd, Options opts);
++
++    private static native long nativeCreateLivePhotoByBmp(long nativeObject, Bitmap bmp,
++            byte[] exifData, FileDescriptor outFd, Options opts);
++
++    private static native long nativeProcessHeicPhotoFrame(long nativeObject, byte[] yuvBuffer,
++            byte[] exifData, FileDescriptor fd);
++
++    private static native void nativeDestory(long nativeObject);
++
++    public boolean createPrimaryImage(int width, int height, int strideWidth, int strideHeight,
++            int fmt, int quality, int rotation) {
++        if (quality <= 0 || quality > 100) {
++            throw new IllegalArgumentException("quality range error");
++        }
++        if (width <= 0 || height <= 0 || strideWidth <= 0 || strideHeight <= 0
++                || fmt < 0 || fmt >= COLOR_FMT_MAX) {
++            Log.i(TAG, "Input param error.");
++            return false;
++        }
++        long ret = nativeCreate(mNativeObject, width, height, strideWidth, strideHeight,
++                fmt, quality, rotation);
++        Log.i(TAG, " OplusHeifWriter start! quality: " + quality);
++        if (ret < 0) {
++            return false;
++        }
++        return true;
++    }
++
++    public boolean processPrimaryImage(byte[] yuvBuffer, byte[] exifData, FileDescriptor fd) {
++        long ret = nativeProcessHeicPhotoFrame(mNativeObject, yuvBuffer, exifData, fd);
++        if (ret < 0) {
++            return false;
++        }
++        return true;
++    }
++
++    public boolean processPrimaryLivePhoto(byte[] yuvBuffer, byte[] exifData, FileDescriptor outFd,
++            Options opts) {
++        long ret = nativeCreateLivePhoto(mNativeObject, yuvBuffer, exifData, outFd, opts);
++        if (ret < 0) {
++            Log.i(TAG, "processPrimaryLivePhoto failed!");
++            return false;
++        }
++        return true;
++    }
++
++    public boolean processPrimaryLivePhoto(Bitmap bmp, byte[] exifData, FileDescriptor outFd,
++            Options opts) {
++        long ret = nativeCreateLivePhotoByBmp(mNativeObject, bmp, exifData, outFd, opts);
++        if (ret < 0) {
++            Log.i(TAG, "processPrimaryLivePhoto failed!");
++            return false;
++        }
++        return true;
++    }
++
++    public void destory() {
++        Log.i(TAG, " OplusHeifWriter destory!");
++        nativeDestory(mNativeObject);
++        mNativeObject = 0;
++    }
++
++    @Override
++    protected void finalize() throws Throwable {
++        try {
++            if (mNativeObject != 0) {
++                destory();
++                mNativeObject = 0;
++            }
++        } finally {
++            super.finalize();
++        }
++    }
++
++    public static class Options {
++        public byte[] fileExtender;
++        public FileDescriptor gainmapFd;
++        public long mcroVideoPresentationTimestampUs;
++        public FileDescriptor videoFd;
++        public String xmpData;
++
++        public Options() {
++        }
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/view/ViewRootManager.java b/oplus-fwk/src/com/oplus/view/ViewRootManager.java
+index 418df0d8..70a3860d 100644
+--- a/oplus-fwk/src/com/oplus/view/ViewRootManager.java
++++ b/oplus-fwk/src/com/oplus/view/ViewRootManager.java
+@@ -66,5 +66,6 @@ public class ViewRootManager {
+     }
+ 
+     public void setBlurParams(OplusBlurParam params) {
++        setBlurParams((Object) params);
+     }
+ }
+diff --git a/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CameraCharacteristics.java b/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CameraCharacteristics.java
+new file mode 100644
+index 00000000..47f1dbd1
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CameraCharacteristics.java
+@@ -0,0 +1,20 @@
++package com.oplus.wrapper.hardware.camera2;
++
++import com.oplus.wrapper.hardware.camera2.impl.CameraMetadataNative;
++
++public class CameraCharacteristics {
++    private final android.hardware.camera2.CameraCharacteristics mCameraCharacteristics;
++
++    public CameraCharacteristics(android.hardware.camera2.CameraCharacteristics cameraCharacteristics) {
++        this.mCameraCharacteristics = cameraCharacteristics;
++    }
++
++    public CameraMetadataNative getNativeMetadata() {
++        android.hardware.camera2.impl.CameraMetadataNative metadataNative =
++                this.mCameraCharacteristics.getNativeMetadata();
++        if (metadataNative == null) {
++            return null;
++        }
++        return new CameraMetadataNative(metadataNative);
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CameraMetadata.java b/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CameraMetadata.java
+new file mode 100644
+index 00000000..7bfa4251
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CameraMetadata.java
+@@ -0,0 +1,13 @@
++package com.oplus.wrapper.hardware.camera2;
++
++public class CameraMetadata<T> {
++    private final android.hardware.camera2.CameraMetadata<T> mCameraMetadata;
++
++    public CameraMetadata(android.hardware.camera2.CameraMetadata<T> cameraMetadata) {
++        this.mCameraMetadata = cameraMetadata;
++    }
++
++    public long getNativeMetadataPtr() {
++        return this.mCameraMetadata.getNativeMetadataPtr();
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CaptureResult.java b/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CaptureResult.java
+new file mode 100644
+index 00000000..e61802e7
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/CaptureResult.java
+@@ -0,0 +1,57 @@
++package com.oplus.wrapper.hardware.camera2;
++
++import com.oplus.wrapper.hardware.camera2.impl.CameraMetadataNative;
++
++public class CaptureResult {
++    private final android.hardware.camera2.CaptureResult mCaptureResult;
++
++    public CaptureResult(android.hardware.camera2.CaptureResult captureResult) {
++        this.mCaptureResult = captureResult;
++    }
++
++    public CameraMetadataNative getNativeMetadata() {
++        android.hardware.camera2.impl.CameraMetadataNative metadataNative =
++                this.mCaptureResult.getNativeMetadata();
++        if (metadataNative == null) {
++            return null;
++        }
++        return new CameraMetadataNative(metadataNative);
++    }
++
++    public CameraMetadataNative getNativeCopy() {
++        android.hardware.camera2.impl.CameraMetadataNative metadataNative =
++                this.mCaptureResult.getNativeCopy();
++        if (metadataNative == null) {
++            return null;
++        }
++        return new CameraMetadataNative(metadataNative);
++    }
++
++    public static final class Key<T> {
++        private final android.hardware.camera2.CaptureResult.Key<T> mKey;
++
++        public Key(android.hardware.camera2.CaptureResult.Key<T> key) {
++            this.mKey = key;
++        }
++
++        public Key(String name, Class<T> type, long vendorId) {
++            this.mKey = new android.hardware.camera2.CaptureResult.Key<>(name, type, vendorId);
++        }
++
++        public Key(String name, Class<T> type) {
++            this.mKey = new android.hardware.camera2.CaptureResult.Key<>(name, type);
++        }
++
++        public Key(String name, String fallbackName, Class<T> type) {
++            this.mKey = new android.hardware.camera2.CaptureResult.Key<>(name, fallbackName, type);
++        }
++
++        public android.hardware.camera2.CaptureResult.Key<T> getKey() {
++            return this.mKey;
++        }
++
++        public long getVendorId() {
++            return this.mKey.getVendorId();
++        }
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/impl/CameraMetadataNative.java b/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/impl/CameraMetadataNative.java
+new file mode 100644
+index 00000000..e2611bb1
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/wrapper/hardware/camera2/impl/CameraMetadataNative.java
+@@ -0,0 +1,17 @@
++package com.oplus.wrapper.hardware.camera2.impl;
++
++public class CameraMetadataNative {
++    private final android.hardware.camera2.impl.CameraMetadataNative mCameraMetadataNative;
++
++    public CameraMetadataNative(android.hardware.camera2.impl.CameraMetadataNative cameraMetadataNative) {
++        this.mCameraMetadataNative = cameraMetadataNative;
++    }
++
++    public long getMetadataPtr() {
++        return this.mCameraMetadataNative.getMetadataPtr();
++    }
++
++    public static int getTag(String key, long vendorId) {
++        return android.hardware.camera2.impl.CameraMetadataNative.getTag(key, vendorId);
++    }
++}

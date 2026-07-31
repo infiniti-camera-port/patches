@@ -1,0 +1,347 @@
+From 11da57309fe0d07e87ef5d251df9dd662ae494e2 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 7 Jul 2026 15:55:59 -0600
+Subject: [PATCH 14/22] oplus-fwk: OplusFeatureConfigManager + OplusBuild +
+ OplusCfgFilePolicy stubs
+
+(cherry picked from commit 23132bb82b984f9831156ecb70f1e1ef64b3b60c)
+---
+ .../src/android/os/OplusKeyEventManager.java  | 69 ++++++++++++++++-
+ .../content/IOplusFeatureConfigManager.java   | 76 +++++++++++++++++++
+ .../content/OplusFeatureConfigManager.java    |  4 +
+ .../com/oplus/cust/OplusCfgFilePolicy.java    | 55 ++++++++++++++
+ oplus-fwk/src/com/oplus/os/OplusBuild.java    | 10 ++-
+ .../oplus/util/OplusPlatformLevelUtils.java   | 52 +++++++++++++
+ 6 files changed, 262 insertions(+), 4 deletions(-)
+ create mode 100644 oplus-fwk/src/com/oplus/content/IOplusFeatureConfigManager.java
+ create mode 100644 oplus-fwk/src/com/oplus/cust/OplusCfgFilePolicy.java
+ create mode 100644 oplus-fwk/src/com/oplus/util/OplusPlatformLevelUtils.java
+
+diff --git a/oplus-fwk/src/android/os/OplusKeyEventManager.java b/oplus-fwk/src/android/os/OplusKeyEventManager.java
+index fe013a81..7dab1fcb 100644
+--- a/oplus-fwk/src/android/os/OplusKeyEventManager.java
++++ b/oplus-fwk/src/android/os/OplusKeyEventManager.java
+@@ -1,10 +1,77 @@
+ package android.os;
+ 
++import android.content.Context;
+ import android.view.KeyEvent;
+ 
++/**
++ * LOS shim for the OEM android.os.OplusKeyEventManager. The LOS oplus-fwk previously carried only
++ * the OnKeyEventObserver interface; the OEM apps (e.g. OppoGallery2) also call getInstance() +
++ * register/unregisterKeyEventObserver(). The OEM impl pulls OplusActivityTaskManager + a chain of
++ * OEM classes absent from LOS, so this provides getInstance() returning a singleton whose
++ * key-event registration is a no-op (the key-listening feature degrades silently rather than
++ * crashing).
++ */
+ public class OplusKeyEventManager {
++    public static final String TAG = "OplusKeyEventManager";
++
++    public static final int INTERCEPT_ALWAYS = 0;
++    public static final int INTERCEPT_ONCE = 1;
++
++    public static final int LISTEN_ALL_KEY_EVENT = 0;
++    public static final int LISTEN_POWER_KEY_EVENT = 1;
++    public static final int LISTEN_VOLUME_UP_KEY_EVENT = 2;
++    public static final int LISTEN_VOLUME_DOWN_KEY_EVENT = 4;
++    public static final int LISTEN_MENU_KEY_EVENT = 8;
++    public static final int LISTEN_HOME_KEY_EVENT = 16;
++    public static final int LISTEN_BACK_KEY_EVENT = 32;
++    public static final int LISTEN_F4_KEY_EVENT = 64;
++    public static final int LISTEN_CAMERA_KEY_EVENT = 128;
++    public static final int LISTEN_HEADSETHOOK_KEY_EVENT = 1024;
++    public static final int LISTEN_VOLUME_MUTE_KEY_EVENT = 2048;
++    public static final int LISTEN_APP_SWITCH_KEY_EVENT = 4096;
++    public static final int LISTEN_WAKEUP_KEY_EVENT = 8192;
++    public static final int LISTEN_BRIGHTNESS_UP_KEY_EVENT = 16384;
++    public static final int LISTEN_BRIGHTNESS_DOWN_KEY_EVENT = 32768;
++    public static final int LISTEN_ENDCALL_KEY_EVENT = 65536;
++    public static final int LISTEN_SLEEP_KEY_EVENT = 131072;
++    public static final int LISTEN_ACTION_BUTTON_SINGLE_TAP_KEY_EVENT = 262144;
++    public static final int LISTEN_ACTION_BUTTON_LONG_PRESS_KEY_EVENT = 524288;
++    public static final int LISTEN_LINGXI_GAME_KEY_EVENT = 16777216;
++    public static final int LISTEN_SHOULDER_DOWN_KEY_EVENT = 33554432;
++    public static final int LISTEN_SHOULDER_UP_KEY_EVENT = 67108864;
++    public static final int LISTEN_LINGXI_NO_GAME_KEY_EVENT = 134217728;
++
++    public int mVersion = 1;
++
++    private static volatile OplusKeyEventManager sInstance;
+ 
+     public interface OnKeyEventObserver {
+-        void onKeyEvent(KeyEvent event); 
++        void onKeyEvent(KeyEvent event);
++    }
++
++    private OplusKeyEventManager() {
++    }
++
++    public static OplusKeyEventManager getInstance() {
++        if (sInstance == null) {
++            synchronized (OplusKeyEventManager.class) {
++                if (sInstance == null) {
++                    sInstance = new OplusKeyEventManager();
++                }
++            }
++        }
++        return sInstance;
++    }
++
++    public boolean registerKeyEventObserver(Context context, OnKeyEventObserver observer, int listenFlag) {
++        return false;
++    }
++
++    public boolean unregisterKeyEventObserver(Context context, OnKeyEventObserver observer) {
++        return false;
++    }
++
++    public int getVersion() {
++        return mVersion;
+     }
+ }
+diff --git a/oplus-fwk/src/com/oplus/content/IOplusFeatureConfigManager.java b/oplus-fwk/src/com/oplus/content/IOplusFeatureConfigManager.java
+new file mode 100644
+index 00000000..9310c3a1
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/content/IOplusFeatureConfigManager.java
+@@ -0,0 +1,76 @@
++package com.oplus.content;
++
++import android.os.RemoteException;
++
++import java.util.List;
++
++/**
++ * Stub of the OEM com.oplus.content.IOplusFeatureConfigManager.
++ * In OOS this is a plain interface whose methods all carry default (no-op /
++ * return-false) bodies; reproduced faithfully so any invoke-interface resolves.
++ * FeatureID is provided here as the nested enum (binary name
++ * com.oplus.content.IOplusFeatureConfigManager$FeatureID).
++ */
++public interface IOplusFeatureConfigManager {
++
++    enum FeatureID {
++        STATIC_COMPONENT,
++        DYNAMIC_SIMSLOT_1,
++        DYNAMIC_SIMSLOT_2,
++        INVALID
++    }
++
++    default boolean hasFeature(String featureName) throws RemoteException {
++        return false;
++    }
++
++    default boolean hasFeature(String name, FeatureID featureID) throws RemoteException {
++        return false;
++    }
++
++    default boolean enableFeature(String featureName) throws RemoteException {
++        return false;
++    }
++
++    default boolean enableFeature(String featureName, FeatureID featureID) throws RemoteException {
++        return false;
++    }
++
++    default boolean disableFeature(String featureName) throws RemoteException {
++        return false;
++    }
++
++    default boolean disableFeature(String featureName, FeatureID featureID) throws RemoteException {
++        return false;
++    }
++
++    default void notifyFeaturesUpdate(String action, String actionValue) throws RemoteException {
++    }
++
++    default void notifyFeaturesUpdate(String action, String actionValue, FeatureID featureID) throws RemoteException {
++    }
++
++    default boolean registerFeatureObserver(List<String> features, IOplusFeatureObserver observer) {
++        return false;
++    }
++
++    default boolean unregisterFeatureObserver(IOplusFeatureObserver observer) {
++        return false;
++    }
++
++    default boolean registerFeatureObserver(List<String> features, FeatureID featureID, IOplusFeatureMapObserver observer) {
++        return false;
++    }
++
++    default boolean unregisterFeatureObserver(FeatureID featureID, IOplusFeatureMapObserver observer) {
++        return false;
++    }
++
++    default boolean registerFeatureActionObserver(IOplusFeatureActionObserver observer) {
++        return false;
++    }
++
++    default boolean unregisterFeatureActionObserver(IOplusFeatureActionObserver observer) {
++        return false;
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/content/OplusFeatureConfigManager.java b/oplus-fwk/src/com/oplus/content/OplusFeatureConfigManager.java
+index c13755a1..34e37d05 100644
+--- a/oplus-fwk/src/com/oplus/content/OplusFeatureConfigManager.java
++++ b/oplus-fwk/src/com/oplus/content/OplusFeatureConfigManager.java
+@@ -57,4 +57,8 @@ public class OplusFeatureConfigManager {
+     public interface OnFeatureMapObserver {
+         default void onFeatureUpdate(List<String> list, int featureID) {}
+     }
++
++    public boolean isPermit(String feature) {
++        return true;
++    }
+ }
+diff --git a/oplus-fwk/src/com/oplus/cust/OplusCfgFilePolicy.java b/oplus-fwk/src/com/oplus/cust/OplusCfgFilePolicy.java
+new file mode 100644
+index 00000000..7d2fcd1e
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/cust/OplusCfgFilePolicy.java
+@@ -0,0 +1,55 @@
++package com.oplus.cust;
++
++import java.io.File;
++import java.util.ArrayList;
++import java.util.List;
++
++/*
++ * Stub implementation — OplusCfgFilePolicy is the OnePlus/Oplus "cust" customization
++ * config-file locator. On OOS it lives in oplus-framework.jar and maps a config name to
++ * files under the OEM cust partitions (/my_product/cust, /my_company, ...), which are NOT
++ * present on LineageOS. Returning empty lists / null makes consumers — e.g.
++ * com.oplus.aiunit's AssetsUnitStore.listFilesFromOS, and many other OnePlus system apps —
++ * find no cust configs and degrade gracefully, instead of dying with
++ * NoClassDefFoundError: com.oplus.cust.OplusCfgFilePolicy on class resolution.
++ *
++ * Public API mirrored exactly from the OOS 16.0.8.300 oplus-framework.jar definition
++ * (descriptors must match for the precompiled consumers to link).
++ */
++public class OplusCfgFilePolicy {
++    public static final int DEFAULT_SLOT = -2;
++
++    public static String getCarrierId(int slot) {
++        return "";
++    }
++
++    public static List getCfgFileList(String configName, String dir, int slot) {
++        return new ArrayList();
++    }
++
++    // OOS maps <configName> onto the OEM cust levels (/my_product, /my_carrier, ... + base),
++    // which are absent on LineageOS. Enumerate the LOS partition layout instead so the OEM
++    // AppFeatureProvider / cust consumers locate their config dirs the same way OOS does —
++    // e.g. /system_ext/etc/extension/com.oplus.app-features.xml. Returns the existing
++    // <partition><configName> dirs in priority order; empty only when none exist, which keeps
++    // consumers-with-no-config degrading gracefully (the reason the port stubbed this to empty).
++    public static List getCfgLevelList(String configName, int slot) {
++        List list = new ArrayList();
++        if (configName == null) {
++            return list;
++        }
++        String sub = configName.startsWith("/") ? configName : "/" + configName;
++        String[] roots = { "/system_ext", "/product", "/system", "/vendor", "/odm" };
++        for (String root : roots) {
++            String dir = root + sub;
++            if (new File(dir).isDirectory()) {
++                list.add(dir);
++            }
++        }
++        return list;
++    }
++
++    public static File getCfgTopPriorityFile(String configName, String dir, int slot) {
++        return null;
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/os/OplusBuild.java b/oplus-fwk/src/com/oplus/os/OplusBuild.java
+index 98063290..5713459b 100644
+--- a/oplus-fwk/src/com/oplus/os/OplusBuild.java
++++ b/oplus-fwk/src/com/oplus/os/OplusBuild.java
+@@ -36,12 +36,16 @@ public class OplusBuild {
+     private static final String[] VERSIONS = {"V1.0", "V1.2", "V1.4", "V2.0", "V2.1", "V3.0", "V3.1", "V3.2", "V5.0", "V5.1", "V5.2", "V6.0", "V6.1", "V6.2", "V6.7", "V7", "V7.1", "V7.2", "V11", "V11.1", "V11.2", "V11.3", "V12", "V12.1", "V12.2", null};
+ 
+     public static class VERSION {
+-        public static final String RELEASE = "V12.1";
++        public static final String RELEASE = SystemProperties.get("ro.build.version.oplusrom", "V12.1");
+         public static final int SDK_VERSION = getOplusOSVERSION();
+-        public static final int SDK_SUB_VERSION = 19;
++        public static final int SDK_SUB_VERSION = SystemProperties.getInt("ro.build.version.oplus.sub_api", 19);
+     }
+ 
+     public static int getOplusOSVERSION() {
++        int apiVersion = SystemProperties.getInt("ro.build.version.oplus.api", 0);
++        if (apiVersion > 33) {
++            return apiVersion;
++        }
+         for (int i = VERSIONS.length - 2; i >= 0; i--) {
+             if (!TextUtils.isEmpty(VERSION.RELEASE) && VERSION.RELEASE.startsWith(VERSIONS[i])) {
+                 return i + 1;
+@@ -81,6 +85,6 @@ public class OplusBuild {
+     }
+ 
+     public static String getVersionProp(String property) {
+-        return "V12.1";
++        return SystemProperties.get("ro.build.version.oplusrom", "V12.1");
+     }
+ }
+diff --git a/oplus-fwk/src/com/oplus/util/OplusPlatformLevelUtils.java b/oplus-fwk/src/com/oplus/util/OplusPlatformLevelUtils.java
+new file mode 100644
+index 00000000..b569b3f3
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/util/OplusPlatformLevelUtils.java
+@@ -0,0 +1,52 @@
++package com.oplus.util;
++
++import android.content.Context;
++import android.os.SystemProperties;
++
++/**
++ * Minimal LOS shim for the OEM com.oplus.util.OplusPlatformLevelUtils (absent from the LOS
++ * oplus-fwk). The OEM class computes device RAM/CPU/GPU performance tiers from ro.soc.model +
++ * framework resource arrays; those resources are not present on LOS, so this returns safe
++ * flagship defaults (LEVEL_HIGH) for the platform getters and the real props for the
++ * animation/gaussian getters. Matches the OEM public surface the OEM apps call
++ * (getInstance/getPlatformLevel/getPlatformAnimationLevel/getPlatformGaussianLevel).
++ */
++public class OplusPlatformLevelUtils {
++    public static final int LEVEL_UNDEF = -1;
++    public static final int LEVEL_LOW = 1;
++    public static final int LEVEL_MIDDLE = 2;
++    public static final int LEVEL_HIGH = 3;
++    public static final int LEVEL_TYPE_FOR_RAM = 1;
++    public static final int LEVEL_TYPE_FOR_CPU = 2;
++    public static final int LEVEL_TYPE_FOR_GPU = 3;
++
++    public static final boolean IS_LIGHT_OS = SystemProperties.getBoolean("ro.oplus.lightos", false);
++
++    private static volatile OplusPlatformLevelUtils sInstance = null;
++
++    private OplusPlatformLevelUtils(Context context) {
++    }
++
++    public static OplusPlatformLevelUtils getInstance(Context context) {
++        if (sInstance == null) {
++            synchronized (OplusPlatformLevelUtils.class) {
++                if (sInstance == null) {
++                    sInstance = new OplusPlatformLevelUtils(context);
++                }
++            }
++        }
++        return sInstance;
++    }
++
++    public int getPlatformLevel(int type) {
++        return LEVEL_HIGH;
++    }
++
++    public int getPlatformAnimationLevel() {
++        return SystemProperties.getInt("ro.oplus.animationlevel", 0);
++    }
++
++    public int getPlatformGaussianLevel() {
++        return SystemProperties.getInt("ro.oplus.gaussianlevel", 0);
++    }
++}

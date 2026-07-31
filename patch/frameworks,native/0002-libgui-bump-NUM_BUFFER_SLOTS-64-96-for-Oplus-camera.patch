@@ -1,12 +1,13 @@
-From 7be206716850a2d1bcae64db3237e7accbf25a07 Mon Sep 17 00:00:00 2001
+From 1161c2cc5fdb46f1bdea89b8bda16a1990c05fb9 Mon Sep 17 00:00:00 2001
 From: realahnet <syedmusicrealise@gmail.com>
 Date: Fri, 20 Mar 2026 00:18:22 +0000
-Subject: [PATCH 2/2] libgui: bump NUM_BUFFER_SLOTS 64->96 for Oplus camera
+Subject: [PATCH 2/3] libgui: bump NUM_BUFFER_SLOTS 64->96 for Oplus camera
 
 The Oplus camera requests more than 64 buffer slots; the stock limit of 64 results in a black viewfinder. Raise it to 96.
 
 (cherry picked from commit ecf9e11d2561d0128b055da7bef71810883b33a1)
 (cherry picked from commit 8a454094c592502ac857b045bb4280d74e16ca3c)
+(cherry picked from commit 7be206716850a2d1bcae64db3237e7accbf25a07)
 ---
  libs/ui/include/ui/BufferQueueDefs.h | 4 +++-
  1 file changed, 3 insertions(+), 1 deletion(-)

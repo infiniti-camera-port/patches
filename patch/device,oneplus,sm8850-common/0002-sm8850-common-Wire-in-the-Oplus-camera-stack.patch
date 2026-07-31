@@ -1,0 +1,66 @@
+From 51d622eadf2b08331dbbce42aab739ceb840df96 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 7 Jul 2026 15:58:15 -0600
+Subject: [PATCH 2/7] sm8850-common: Wire in the Oplus camera stack
+
+Expose the ArcSoft/QNN helper libs as vendor public libraries so the camera
+app's classloader namespace can dlopen them, include the Oplus camera board
+config, and allow non-increasing frame timestamps.
+
+Without the public.libraries entries the DSP/QNN path is gated and turbo
+capture cannot run.
+---
+ BoardConfigCommon.mk |  3 +++
+ common.mk            |  1 +
+ extract-files.py     | 15 +++++++++++++++
+ 3 files changed, 19 insertions(+)
+
+diff --git a/BoardConfigCommon.mk b/BoardConfigCommon.mk
+index d46e1c2..ca018d1 100644
+--- a/BoardConfigCommon.mk
++++ b/BoardConfigCommon.mk
+@@ -270,3 +270,6 @@ WPA_SUPPLICANT_VERSION := VER_0_8_X
+ 
+ # Include the proprietary files BoardConfig.
+ include vendor/oneplus/sm8850-common/BoardConfigVendor.mk
++
++# Include the Oplus camera port board flags when the camera stack is present.
++-include vendor/oneplus/camera-sm8850-common/BoardConfig.mk
+diff --git a/common.mk b/common.mk
+index 172ef4b..64022bb 100644
+--- a/common.mk
++++ b/common.mk
+@@ -97,6 +97,7 @@ PRODUCT_PACKAGES += \
+     android.hardware.boot-service.qti.recovery
+ 
+ # Camera
++$(call soong_config_set,camera,allow_nonincreasing_timestamps,true)
+ PRODUCT_PACKAGES += \
+     android.hardware.camera.provider-V3-ndk.vendor
+ 
+diff --git a/extract-files.py b/extract-files.py
+index b1a0398..321d4bb 100755
+--- a/extract-files.py
++++ b/extract-files.py
+@@ -170,6 +170,21 @@ blob_fixups: blob_fixups_user_type = {
+         .add_needed('libbase.so'),
+     'vendor/usr/keylayout/gpio-keys.kl': blob_fixup()
+         .add_line_if_missing('key 735   ASSIST'),
++    # APS turbo fix: on the port, the camera app's classloader namespace cannot dlopen the /odm
++    # ArcSoft/QNN helper libs (couple-HDR, turbo, QNN HTP), which gates the DSP/QNN path so turbo
++    # can't run. Exposing them as vendor public libraries lets the app namespace resolve them.
++    # Adapted from sm8750-common; infiniti uses QnnHtpV81Stub (not V79).
++    'vendor/etc/public.libraries.txt': blob_fixup()
++        .add_line_if_missing('libarcsoft_hdr_couple_api.so')
++        .add_line_if_missing('libarcsoft_high_dynamic_range_couple.so')
++        .add_line_if_missing('libarcsoft_smart_denoise.so')
++        .add_line_if_missing('libarcsoft_turbo_hdr_raw.so')
++        .add_line_if_missing('libarcsoft_turbo_raw.so')
++        .add_line_if_missing('libarcsoft_qnnhtp.so')
++        .add_line_if_missing('libQnnHtp.so')
++        .add_line_if_missing('libQnnSystem.so')
++        .add_line_if_missing('libQnnHtpV81Stub.so')
++        .add_line_if_missing('libQnnGpu.so'),
+ }  # fmt: skip
+ 
+ module = ExtractUtilsModule(

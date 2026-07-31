@@ -1,0 +1,53 @@
+From ca9d9214c64cded6d4d05a6685d495e9e7226524 Mon Sep 17 00:00:00 2001
+From: chandu078 <chandudyavanapelli03@gmail.com>
+Date: Sat, 14 Feb 2026 18:14:46 +0000
+Subject: [PATCH 08/22] Euicc: Add OnePlus 15 / 15R support
+
+Change-Id: I0878ecc0f432ab86c63737f5b83c6f1498af397f
+(cherry picked from commit e50f78000223ff51b87f3e2e8693bd61c8c612a7)
+
+Ledger: hardware_oplus.md Accepted Group A row 1 (e50f7800)
+Change-Id: Ibf31b7c5d080416132c7cb2a37da690e3038670b
+(cherry picked from commit 2d5e4668e82c241ac586d8a657c6cd21ad27293e)
+(cherry picked from commit 9439a2ae0bbeba0a6c34766edb9cf274e0f55aab)
+---
+ packages/Euicc/res/values/strings.xml | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/packages/Euicc/res/values/strings.xml b/packages/Euicc/res/values/strings.xml
+index 6eea55c3..e9361d2a 100644
+--- a/packages/Euicc/res/values/strings.xml
++++ b/packages/Euicc/res/values/strings.xml
+@@ -19,7 +19,10 @@
+                         \"OP5D2BL1\",
+                         \"OP5D35L1\",
+                         \"OP5D3BL1\",
+-                        \"OP5D55L1\"
++                        \"OP5D55L1\",
++                        \"OP60FFL1\",
++                        \"OP611FL1\",
++                        \"OP612DL1\"
+                     ],
+                     \"illustration_lottie\": \"sim_illustration_lottie_bottom\"
+                 }
+@@ -48,7 +51,9 @@
+                         \"OP5973L1\",
+                         \"OP5D35L1\",
+                         \"OP5D3BL1\",
+-                        \"OP5D55L1\"
++                        \"OP5D55L1\",
++                        \"OP611FL1\",
++                        \"OP612DL1\"
+                     ],
+                     \"esim-slot-ids\": [
+                         1
+@@ -63,7 +68,8 @@
+                         \"OP5929L1\",
+                         \"OP5CF9L1\",
+                         \"OP5D0DL1\",
+-                        \"OP5D2BL1\"
++                        \"OP5D2BL1\",
++                        \"OP60FFL1\"
+                     ],
+                     \"esim-slot-ids\": [],
+                     \"psim-slot-ids\": [

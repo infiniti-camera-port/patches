@@ -1,0 +1,28 @@
+From 635e8e84693d33ab1a289df9d85b355ab8d6dd2d Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Thu, 30 Jul 2026 17:03:47 -0600
+Subject: [PATCH 6/7] sm8850-common: Decommonize the OEM camera layer
+ sensorbridge
+
+infiniti uses an older Oplus camera layer generation than macan/macanc/fairlady.
+libsensorbridge is part of that layer's ABI closure, so a single shared copy
+cannot serve all four devices: the camera provider crashes in
+OemLayer::OCommonContext::InitFallbackController during stream configuration.
+
+Declared per device instead, alongside the rest of the closure.
+---
+ proprietary-files.txt | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/proprietary-files.txt b/proprietary-files.txt
+index 4806a92..7b44389 100644
+--- a/proprietary-files.txt
++++ b/proprietary-files.txt
+@@ -985,7 +985,6 @@ odm/bin/oplus_sensor_fb
+ odm/bin/oplus_sensor_logger_daemon
+ odm/etc/init/init.oplus.sensor.rc
+ odm/lib64/liboplus_service.so
+-odm/lib64/libsensorbridge.so
+ vendor/bin/hw/vendor.qti.hardware.sensorscalibrate-service
+ vendor/bin/init.qcom.sensors.sh
+ vendor/bin/qsap_dcfd

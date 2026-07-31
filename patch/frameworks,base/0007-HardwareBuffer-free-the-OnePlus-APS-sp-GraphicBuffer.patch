@@ -1,0 +1,145 @@
+From f523b890a4410d18cb38b38c45d20a7c10d64eab Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 21 Jul 2026 23:46:34 -0600
+Subject: [PATCH 7/8] HardwareBuffer: free the OnePlus APS sp<GraphicBuffer>
+ holder
+
+Restore holder-specific native finalization and GC size accounting so explicit close, finalization, and repeated close dispatch exactly one type-correct release without changing the generic wrapper path.
+
+Plan: .omo/plans/crdroid-v3-infiniti-bp4a-fast-exec.md
+
+(cherry picked from commit c7979ad7e46560a23afda59924253519d7fe4808)
+---
+ .../java/android/hardware/HardwareBuffer.java | 42 +++++++++++++++----
+ core/jni/android_hardware_HardwareBuffer.cpp  | 38 +++++++++++++++++
+ 2 files changed, 73 insertions(+), 7 deletions(-)
+
+diff --git a/core/java/android/hardware/HardwareBuffer.java b/core/java/android/hardware/HardwareBuffer.java
+index 8ce5b56af6c0..82a9232d8f12 100644
+--- a/core/java/android/hardware/HardwareBuffer.java
++++ b/core/java/android/hardware/HardwareBuffer.java
+@@ -400,16 +400,41 @@ public final class HardwareBuffer implements Parcelable, AutoCloseable {
+         mCloseGuard.open("HardwareBuffer.close");
+     }
+ 
++    /**
++     * @hide
++     * Builds the NativeAllocationRegistry for an {@code sp<GraphicBuffer>} holder (the native
++     * object handed in by ImageReader$SurfaceImage#nativeGetOplusHardwareBuffer). Unlike
++     * {@link #getRegistry(long)} it uses {@link #nGetOplusHolderFinalizer()}, which deletes the
++     * holder as an {@code sp<GraphicBuffer>*} instead of as a {@code GraphicBufferWrapper*}.
++     */
++    private static NativeAllocationRegistry getOplusHolderRegistry(long size) {
++        final long func = nGetOplusHolderFinalizer();
++        final Class cls = HardwareBuffer.class;
++        return com.android.libcore.readonly.Flags.nativeMetrics()
++            ? NativeAllocationRegistry.createNonmalloced(cls, func, size)
++            : NativeAllocationRegistry.createNonmalloced(cls.getClassLoader(), func, size);
++    }
++
+     /**
+      * Private use only. Called from JNI (ImageReader$SurfaceImage#nativeGetOplusHardwareBuffer)
+      * with a native object that is an {@code sp<GraphicBuffer>} holder rather than an
+-     * {@code AHardwareBuffer}. Mirrors the stock OnePlus framework's {@code (JZ)V} constructor:
+-     * it intentionally skips nEstimateSize()/registerNativeAllocation(), which assume an
+-     * AHardwareBuffer; the native holder's lifetime is managed by the OnePlus camera (APS) side.
+-     * The boolean argument only selects this overload.
++     * {@code AHardwareBuffer}. The boolean argument only selects this overload.
++     *
++     * <p>The holder is a heap-allocated {@code new sp<GraphicBuffer>(...)} that nothing on the
++     * native side ever deletes, so it must be cleaned up from here. We register a
++     * NativeAllocationRegistry cleaner using a holder-specific finalizer
++     * ({@link #nGetOplusHolderFinalizer()}) that deletes the {@code sp<GraphicBuffer>}, releasing
++     * the strong GraphicBuffer reference on {@link #close()} and on GC/{@link #finalize()}.
++     * Without this cleaner every frame the OnePlus camera (APS) pulls via
++     * getOplusHardwareBuffer() leaks one GC-immune {@code sp<GraphicBuffer>}. The holder type is
++     * incompatible with the generic {@link #nGetNativeFinalizer()} (GraphicBufferWrapper), so it
++     * must not be reused here. Size is estimated from the holder's GraphicBuffer for GC
++     * accounting, mirroring the {@link #HardwareBuffer(long)} ctor.
+      */
+     private HardwareBuffer(long nativeObject, boolean isGraphicBufferHolder) {
+         mNativeObject = nativeObject;
++        long holderSize = nEstimateOplusHolderSize(nativeObject);
++        mCleaner = getOplusHolderRegistry(holderSize).registerNativeAllocation(this, mNativeObject);
+         mCloseGuard.open("HardwareBuffer.close");
+     }
+ 
+@@ -501,9 +526,9 @@ public final class HardwareBuffer implements Parcelable, AutoCloseable {
+         if (!isClosed()) {
+             mCloseGuard.close();
+             mNativeObject = 0;
+-            // mCleaner is null for buffers created via the HardwareBuffer(long, boolean)
+-            // ctor (OnePlus sp<GraphicBuffer> holder); their native lifetime is owned by
+-            // the caller, so there is nothing to free here.
++            // mCleaner runs the native finalizer registered in the constructor: it frees the
++            // GraphicBufferWrapper for normal HardwareBuffers, or deletes the sp<GraphicBuffer>
++            // holder for OnePlus APS buffers created via the HardwareBuffer(long, boolean) ctor.
+             if (mCleaner != null) {
+                 mCleaner.run();
+                 mCleaner = null;
+@@ -570,6 +595,9 @@ public final class HardwareBuffer implements Parcelable, AutoCloseable {
+             long usage);
+     private static native long nCreateFromGraphicBuffer(GraphicBuffer graphicBuffer);
+     private static native long nGetNativeFinalizer();
++    // OnePlus APS (sp<GraphicBuffer> holder) support; see HardwareBuffer(long, boolean).
++    private static native long nGetOplusHolderFinalizer();
++    private static native long nEstimateOplusHolderSize(long nativeObject);
+     private static native void nWriteHardwareBufferToParcel(long nativeObject, Parcel dest);
+     private static native long nReadHardwareBufferFromParcel(Parcel in);
+     @FastNative
+diff --git a/core/jni/android_hardware_HardwareBuffer.cpp b/core/jni/android_hardware_HardwareBuffer.cpp
+index c8059f39a34a..b9cd51767019 100644
+--- a/core/jni/android_hardware_HardwareBuffer.cpp
++++ b/core/jni/android_hardware_HardwareBuffer.cpp
+@@ -112,6 +112,40 @@ static jlong android_hardware_HardwareBuffer_getNativeFinalizer(JNIEnv* env, job
+     return static_cast<jlong>(reinterpret_cast<uintptr_t>(&destroyWrapper));
+ }
+ 
++// OnePlus camera (APS) extension. ImageReader$SurfaceImage#nativeGetOplusHardwareBuffer hands a
++// HardwareBuffer a native object that is a heap-allocated sp<GraphicBuffer> holder (built with
++// `new sp<GraphicBuffer>(...)`), NOT a GraphicBufferWrapper/AHardwareBuffer. The generic
++// destroyWrapper() finalizer would `delete` it as the wrong type, so the holder gets its own
++// finalizer that deletes the sp<GraphicBuffer>, releasing the strong GraphicBuffer reference.
++static void freeOplusGraphicBufferHolder(void* holder) {
++    delete reinterpret_cast<sp<GraphicBuffer>*>(holder);
++}
++
++static jlong android_hardware_HardwareBuffer_getOplusHolderFinalizer(JNIEnv* env, jobject clazz) {
++    return static_cast<jlong>(reinterpret_cast<uintptr_t>(&freeOplusGraphicBufferHolder));
++}
++
++// Size estimate (for NativeAllocationRegistry GC accounting) of an sp<GraphicBuffer> holder.
++// Mirrors estimateSize() but reads the holder type rather than a GraphicBufferWrapper, so the
++// pointer is never reinterpreted as the wrong layout.
++static jlong android_hardware_HardwareBuffer_estimateOplusHolderSize(JNIEnv* env, jobject clazz,
++        jlong nativeObject) {
++    sp<GraphicBuffer>* holder = reinterpret_cast<sp<GraphicBuffer>*>(nativeObject);
++    if (holder == nullptr || *holder == nullptr) {
++        return 0;
++    }
++    GraphicBuffer* buffer = holder->get();
++    uint32_t bpp = bytesPerPixel(buffer->getPixelFormat());
++    if (bpp == 0) {
++        // If the pixel format is not recognized, use 1 as default.
++        bpp = 1;
++    }
++
++    const uint32_t bufferStride =
++            buffer->getStride() > 0 ? buffer->getStride() : buffer->getWidth();
++    return static_cast<jlong>(static_cast<uint64_t>(buffer->getHeight() * bufferStride * bpp));
++}
++
+ static jboolean android_hardware_HardwareBuffer_isSupported(JNIEnv* env, jobject clazz,
+         jint width, jint height, jint format, jint layers, jlong usage) {
+ 
+@@ -275,6 +309,10 @@ static const JNINativeMethod gMethods[] = {
+             (void*) android_hardware_HardwareBuffer_createFromGraphicBuffer },
+     { "nGetNativeFinalizer", "()J",
+             (void*) android_hardware_HardwareBuffer_getNativeFinalizer },
++    { "nGetOplusHolderFinalizer", "()J",
++            (void*) android_hardware_HardwareBuffer_getOplusHolderFinalizer },
++    { "nEstimateOplusHolderSize", "(J)J",
++            (void*) android_hardware_HardwareBuffer_estimateOplusHolderSize },
+     { "nWriteHardwareBufferToParcel",  "(JLandroid/os/Parcel;)V",
+             (void*) android_hardware_HardwareBuffer_write },
+     { "nReadHardwareBufferFromParcel", "(Landroid/os/Parcel;)J",

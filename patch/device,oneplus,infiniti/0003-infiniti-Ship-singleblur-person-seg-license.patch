@@ -1,19 +1,20 @@
-From c9d641be0f0bde2b72092e56cca969dd98d299e1 Mon Sep 17 00:00:00 2001
+From 37ecc77b41a7eae95e1ba931f3f6b409a22609b0 Mon Sep 17 00:00:00 2001
 From: 1vivy <1vivy@tutanota.com>
 Date: Tue, 7 Jul 2026 16:01:55 -0600
-Subject: [PATCH 3/3] infiniti: Ship singleblur person-seg license
+Subject: [PATCH 3/4] infiniti: Ship singleblur person-seg license
 
 Source: a3fd6cccf58fac6546423d4152774e2cf9edf714
 Change-Id: I9bd91589f34b45ad9bede72cf1e92df3dbdf5bfd
+(cherry picked from commit c9d641be0f0bde2b72092e56cca969dd98d299e1)
 ---
  proprietary-files.txt | 1 +
  1 file changed, 1 insertion(+)
 
 diff --git a/proprietary-files.txt b/proprietary-files.txt
-index f1e7891..a36acc1 100644
+index a87e9a1..58759b9 100644
 --- a/proprietary-files.txt
 +++ b/proprietary-files.txt
-@@ -714,6 +714,7 @@ odm/etc/camera/pfb_bin/ThirdPartyPreSkintuneBinary.bin
+@@ -733,6 +733,7 @@ odm/etc/camera/pfb_bin/ThirdPartyPreSkintuneBinary.bin
  odm/etc/camera/pfb_bin/ThirdPartyPreSkintuneMRTBinary.bin
  odm/etc/camera/pfb_bin/ThirdPartyPreVertFilterBinary.bin
  odm/etc/camera/pfb_bin/ThirdPartyPreVertSurBinary.bin

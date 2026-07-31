@@ -1,0 +1,638 @@
+From 287963cc63e52e6c94290ee473ab93dac6ab8c33 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 7 Jul 2026 15:56:46 -0600
+Subject: [PATCH 15/22] oplus-fwk: AIUnit class surface + CryptoEng HAL client
+
+(cherry picked from commit 00fa86d89e1cbf24dcd7be225fe2423522ad277b)
+---
+ .../content/pm/OplusPackageManager.java       |   7 +
+ .../MultiUser/OplusMultiUserManager.java      |   4 +
+ .../com/oplus/app/OplusHansFreezeManager.java |  43 ++++
+ .../hardware/cryptoeng/CryptoEngManager.java  |  95 ++++++++
+ .../com/oplus/os/OplusLockPatternUtils.java   |  30 +++
+ .../com/oplus/ota/OplusSystemUpdateInfo.java  |  24 ++
+ .../com/oplus/wrapper/util/StatsEvent.java    |  47 ++++
+ .../sysapi/cryptoeng/CryptoengNative.java     |  27 +++
+ .../oplus/hardware/cryptoeng/ICryptoeng.java  | 222 ++++++++++++++++++
+ sepolicy/qti/vendor/file_contexts             |   1 -
+ sepolicy/qti/vendor/hwservice_contexts        |   1 -
+ vintf/device_framework_matrix.xml             |  16 ++
+ 12 files changed, 515 insertions(+), 2 deletions(-)
+ create mode 100644 oplus-fwk/src/com/oplus/app/OplusHansFreezeManager.java
+ create mode 100644 oplus-fwk/src/com/oplus/hardware/cryptoeng/CryptoEngManager.java
+ create mode 100644 oplus-fwk/src/com/oplus/os/OplusLockPatternUtils.java
+ create mode 100644 oplus-fwk/src/com/oplus/ota/OplusSystemUpdateInfo.java
+ create mode 100644 oplus-fwk/src/com/oplus/wrapper/util/StatsEvent.java
+ create mode 100644 oplus-fwk/src/com/oplusx/sysapi/cryptoeng/CryptoengNative.java
+ create mode 100644 oplus-fwk/src/vendor/oplus/hardware/cryptoeng/ICryptoeng.java
+
+diff --git a/oplus-fwk/src/android/content/pm/OplusPackageManager.java b/oplus-fwk/src/android/content/pm/OplusPackageManager.java
+index d272f2ae..36610532 100644
+--- a/oplus-fwk/src/android/content/pm/OplusPackageManager.java
++++ b/oplus-fwk/src/android/content/pm/OplusPackageManager.java
+@@ -750,4 +750,11 @@ public class OplusPackageManager {
+             throw e.rethrowFromSystemServer();
+         }
+     }
++
++    public com.oplus.ota.OplusSystemUpdateInfo getSystemUpdateInfo() {
++        // No OOS OTA service on LineageOS. Null is fail-closed by OEM design:
++        // the caller immediately dereferences the record, and that NPE lands in
++        // its own catch(Exception), aborting the OTA-check branch cleanly.
++        return null;
++    }
+ }
+diff --git a/oplus-fwk/src/com/oplus/MultiUser/OplusMultiUserManager.java b/oplus-fwk/src/com/oplus/MultiUser/OplusMultiUserManager.java
+index cf8bf73b..431c0854 100644
+--- a/oplus-fwk/src/com/oplus/MultiUser/OplusMultiUserManager.java
++++ b/oplus-fwk/src/com/oplus/MultiUser/OplusMultiUserManager.java
+@@ -18,4 +18,8 @@ public class OplusMultiUserManager {
+     public boolean isMultiSystemUserHandle(UserHandle userHandle) {
+         return false;
+     }
++
++    public boolean isMultiSystemUserId(int userId) {
++        return false;
++    }
+ }
+diff --git a/oplus-fwk/src/com/oplus/app/OplusHansFreezeManager.java b/oplus-fwk/src/com/oplus/app/OplusHansFreezeManager.java
+new file mode 100644
+index 00000000..4344f7b5
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/app/OplusHansFreezeManager.java
+@@ -0,0 +1,43 @@
++/*
++ * Copyright (C) 2026 The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.oplus.app;
++
++import android.content.Context;
++
++/*
++ * Stub — Hans is the OOS background freeze/hibernation service. AIUnit's sysboard
++ * FreezeSubscriber calls keepBackgroundRunning() to shield long-running detect
++ * sessions from being frozen. LineageOS has no Hans, so background execution is
++ * never frozen in the first place: report success on the protect connection so
++ * callers waiting on the callback proceed instead of timing out.
++ *
++ * Descriptors mirrored from the OOS 16.0.8 consumers (AIUnit 16.1.25 smali):
++ *   getInstance()Lcom/oplus/app/OplusHansFreezeManager;
++ *   keepBackgroundRunning(Landroid/content/Context;Ljava/lang/String;Z
++ *       Lcom/oplus/app/IOplusProtectConnection;)V
++ */
++public class OplusHansFreezeManager {
++    private static final OplusHansFreezeManager INSTANCE = new OplusHansFreezeManager();
++
++    private OplusHansFreezeManager() {
++    }
++
++    public static OplusHansFreezeManager getInstance() {
++        return INSTANCE;
++    }
++
++    public void keepBackgroundRunning(Context context, String packageName, boolean protect,
++            IOplusProtectConnection connection) {
++        // No Hans on LineageOS: the caller is already permanently "protected".
++        if (connection != null) {
++            try {
++                connection.onSuccess();
++            } catch (Exception e) {
++                // Callback into the caller's own process; nothing to recover.
++            }
++        }
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/hardware/cryptoeng/CryptoEngManager.java b/oplus-fwk/src/com/oplus/hardware/cryptoeng/CryptoEngManager.java
+new file mode 100644
+index 00000000..f135a942
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/hardware/cryptoeng/CryptoEngManager.java
+@@ -0,0 +1,95 @@
++/*
++ * Copyright (C) 2024 The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.oplus.hardware.cryptoeng;
++
++import android.os.IBinder;
++import android.os.RemoteException;
++import android.os.ServiceManager;
++import android.util.Log;
++
++import vendor.oplus.hardware.cryptoeng.ICryptoeng;
++
++public class CryptoEngManager {
++    private static final String TAG = "CryptoEngManager";
++
++    private static volatile CryptoEngManager sInstance = null;
++    private static String sServiceName = ICryptoeng.DESCRIPTOR + "/default";
++
++    private volatile ICryptoeng mCryptoEngService;
++
++    private IBinder.DeathRecipient mDeathRecipient = new IBinder.DeathRecipient() {
++        @Override
++        public void binderDied() {
++            Log.i(TAG, sServiceName + " binderDied");
++            synchronized (CryptoEngManager.class) {
++                mCryptoEngService = null;
++            }
++        }
++    };
++
++    private CryptoEngManager() {}
++
++    public static CryptoEngManager getInstance() {
++        if (sInstance == null) {
++            synchronized (CryptoEngManager.class) {
++                if (sInstance == null) {
++                    sInstance = new CryptoEngManager();
++                }
++            }
++        }
++        return sInstance;
++    }
++
++    private synchronized ICryptoeng getService() {
++        if (mCryptoEngService == null) {
++            IBinder binder = ServiceManager.getService(sServiceName);
++            if (binder == null) {
++                Log.w(TAG, "getService fail." + sServiceName);
++                return null;
++            }
++            try {
++                binder.linkToDeath(mDeathRecipient, 0);
++            } catch (RemoteException e) {
++                Log.e(TAG, "linkToDeath fail ", e);
++                return null;
++            }
++            mCryptoEngService = ICryptoeng.Stub.asInterface(binder);
++            if (mCryptoEngService == null) {
++                Log.e(TAG, "asInterface fail.");
++            }
++        }
++        return mCryptoEngService;
++    }
++
++    public byte[] cryptoEngCommand(byte[] inData) {
++        try {
++            ICryptoeng service = getService();
++            if (service != null) {
++                return service.cryptoeng_invoke_command(inData);
++            }
++        } catch (RemoteException e) {
++            Log.e(TAG, "get_project failed.", e);
++        }
++        return null;
++    }
++
++    public static class CommandId {
++        public static final byte CE_CMD_GOOGLE_ATTESTATION_WRITE = 0x3;
++        public static final byte CE_CMD_GOOGLE_ATTESTATION_VERIFY = 0x4;
++        public static final byte CE_CMD_FINDPHONE_GET_STATUS = 0x12;
++        public static final byte CE_CMD_GENERATE_PKI_CERT = 0x18;
++        public static final byte CE_CMD_VERIFY_PKI_CERT = 0x19;
++        public static final byte CE_CMD_HDCP_KEY_WRITE = 0x33;
++        public static final byte CE_CMD_HDCP_KEY_VERIFY = 0x34;
++        public static final byte CE_CMD_CLEAN_UP = 0x35;
++        public static final byte CE_CMD_GET_SECURETYPE = 0x36;
++        public static final byte CE_CMD_WIDEVINE_SUPPORT = 0x3b;
++        public static final byte CE_CMD_CRYPTO_SUPPORT = 0x3c;
++        public static final byte CE_CMD_ENGINEER = 0x5a;
++
++        public CommandId() {}
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/os/OplusLockPatternUtils.java b/oplus-fwk/src/com/oplus/os/OplusLockPatternUtils.java
+new file mode 100644
+index 00000000..067e878f
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/os/OplusLockPatternUtils.java
+@@ -0,0 +1,30 @@
++/*
++ * Copyright (C) 2026 The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.oplus.os;
++
++import com.oplus.hardware.cryptoeng.CryptoEngManager;
++
++/*
++ * OOS routes OplusLockPatternUtils.cryptoEngCommand() into the cryptoeng TEE HAL
++ * (vendor.oplus.hardware.cryptoeng). The allawn crypto SDK compiled into AIUnit
++ * (com.allawn.cryptography.teesdk.SystemChannel) uses it as the legacy entry point
++ * into cryptoeng for device attestation / key commands — the sibling path is
++ * com.oplusx.sysapi.cryptoeng.CryptoengNative. Delegate to our CryptoEngManager
++ * client; it returns null when the vendor service is unreachable, which the SDK
++ * already treats as "cryptoeng unavailable" (same as its NoClassDefFound fallback).
++ *
++ * Descriptors mirrored from the OOS 16.0.8 consumers (AIUnit 16.1.25 smali):
++ *   <init>()V
++ *   cryptoEngCommand([B)[B
++ */
++public class OplusLockPatternUtils {
++    public OplusLockPatternUtils() {
++    }
++
++    public byte[] cryptoEngCommand(byte[] command) {
++        return CryptoEngManager.getInstance().cryptoEngCommand(command);
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/ota/OplusSystemUpdateInfo.java b/oplus-fwk/src/com/oplus/ota/OplusSystemUpdateInfo.java
+new file mode 100644
+index 00000000..ca5d06d3
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/ota/OplusSystemUpdateInfo.java
+@@ -0,0 +1,24 @@
++/*
++ * Copyright (C) 2026 The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.oplus.ota;
++
++/*
++ * Stub -- the OOS OTA update record. LineageOS never reports an OOS system
++ * update, so consumers see "no update" values.
++ *
++ * Descriptors mirrored from the OOS 16.0.8 consumers (RomUpdate 16.0.11 smali):
++ *   getUpdateType()I
++ *   isUpdateSucc()Z
++ */
++public class OplusSystemUpdateInfo {
++    public int getUpdateType() {
++        return 0;
++    }
++
++    public boolean isUpdateSucc() {
++        return false;
++    }
++}
+diff --git a/oplus-fwk/src/com/oplus/wrapper/util/StatsEvent.java b/oplus-fwk/src/com/oplus/wrapper/util/StatsEvent.java
+new file mode 100644
+index 00000000..af750006
+--- /dev/null
++++ b/oplus-fwk/src/com/oplus/wrapper/util/StatsEvent.java
+@@ -0,0 +1,47 @@
++package com.oplus.wrapper.util;
++
++public class StatsEvent {
++    private StatsEvent() {
++    }
++
++    public static Builder newBuilder() {
++        return new Builder();
++    }
++
++    public static final class Builder {
++        private Builder() {
++        }
++
++        public Builder setAtomId(int atomId) {
++            return this;
++        }
++
++        public Builder writeInt(int value) {
++            return this;
++        }
++
++        public Builder writeLong(long value) {
++            return this;
++        }
++
++        public Builder writeBoolean(boolean value) {
++            return this;
++        }
++
++        public Builder writeFloat(float value) {
++            return this;
++        }
++
++        public Builder writeString(String value) {
++            return this;
++        }
++
++        public Builder usePooledBuffer() {
++            return this;
++        }
++
++        public StatsEvent build() {
++            return new StatsEvent();
++        }
++    }
++}
+diff --git a/oplus-fwk/src/com/oplusx/sysapi/cryptoeng/CryptoengNative.java b/oplus-fwk/src/com/oplusx/sysapi/cryptoeng/CryptoengNative.java
+new file mode 100644
+index 00000000..546922bc
+--- /dev/null
++++ b/oplus-fwk/src/com/oplusx/sysapi/cryptoeng/CryptoengNative.java
+@@ -0,0 +1,27 @@
++/*
++ * Copyright (C) 2026 The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.oplusx.sysapi.cryptoeng;
++
++import com.oplus.hardware.cryptoeng.CryptoEngManager;
++
++/*
++ * Stub of the oplusx sysapi cryptoeng shim — the modern entry point of the allawn
++ * crypto SDK's SystemChannel (com.allawn.cryptography.teesdk in AIUnit 16.1.25);
++ * the legacy sibling is com.oplus.os.OplusLockPatternUtils#cryptoEngCommand. Both
++ * funnel into the same vendor.oplus.hardware.cryptoeng invoke command, so delegate
++ * to our CryptoEngManager client.
++ *
++ * Descriptors mirrored from the OOS 16.0.8 consumers (AIUnit 16.1.25 smali):
++ *   processCmdV2([B)[B (static)
++ */
++public class CryptoengNative {
++    private CryptoengNative() {
++    }
++
++    public static byte[] processCmdV2(byte[] command) {
++        return CryptoEngManager.getInstance().cryptoEngCommand(command);
++    }
++}
+diff --git a/oplus-fwk/src/vendor/oplus/hardware/cryptoeng/ICryptoeng.java b/oplus-fwk/src/vendor/oplus/hardware/cryptoeng/ICryptoeng.java
+new file mode 100644
+index 00000000..6b619d62
+--- /dev/null
++++ b/oplus-fwk/src/vendor/oplus/hardware/cryptoeng/ICryptoeng.java
+@@ -0,0 +1,222 @@
++/*
++ * Copyright (C) 2024 The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ *
++ * Client-side replica of the stable-VINTF AIDL classes shipped in the OEM
++ * boot-classpath jar (oplus-framework.jar classes2.dex), interface hash
++ * 765136eb397eb5b85ee1e089d8fec72c15e266b3, version 1.
++ */
++
++package vendor.oplus.hardware.cryptoeng;
++
++public interface ICryptoeng extends android.os.IInterface {
++    /** The version of this interface that the caller is built against. */
++    public static final int VERSION = 1;
++    public static final String HASH = "765136eb397eb5b85ee1e089d8fec72c15e266b3";
++
++    /** Default implementation for ICryptoeng. */
++    public static class Default implements vendor.oplus.hardware.cryptoeng.ICryptoeng {
++        @Override
++        public byte[] cryptoeng_invoke_command(byte[] in_buf) throws android.os.RemoteException {
++            return null;
++        }
++
++        @Override
++        public int getInterfaceVersion() {
++            return 0;
++        }
++
++        @Override
++        public String getInterfaceHash() {
++            return "";
++        }
++
++        @Override
++        public android.os.IBinder asBinder() {
++            return null;
++        }
++    }
++
++    /** Local-side IPC implementation stub class. */
++    public static abstract class Stub extends android.os.Binder implements vendor.oplus.hardware.cryptoeng.ICryptoeng {
++        /** Construct the stub and attach it to the interface. */
++        public Stub() {
++            this.markVintfStability();
++            this.attachInterface(this, DESCRIPTOR);
++        }
++
++        /**
++         * Cast an IBinder object into an vendor.oplus.hardware.cryptoeng.ICryptoeng
++         * interface, generating a proxy if needed.
++         */
++        public static vendor.oplus.hardware.cryptoeng.ICryptoeng asInterface(android.os.IBinder obj) {
++            if ((obj == null)) {
++                return null;
++            }
++            android.os.IInterface iin = obj.queryLocalInterface(DESCRIPTOR);
++            if (((iin != null) && (iin instanceof vendor.oplus.hardware.cryptoeng.ICryptoeng))) {
++                return ((vendor.oplus.hardware.cryptoeng.ICryptoeng) iin);
++            }
++            return new vendor.oplus.hardware.cryptoeng.ICryptoeng.Stub.Proxy(obj);
++        }
++
++        @Override
++        public android.os.IBinder asBinder() {
++            return this;
++        }
++
++        /** @hide */
++        public static java.lang.String getDefaultTransactionName(int transactionCode) {
++            switch (transactionCode) {
++                case TRANSACTION_cryptoeng_invoke_command: {
++                    return "cryptoeng_invoke_command";
++                }
++                case TRANSACTION_getInterfaceVersion: {
++                    return "getInterfaceVersion";
++                }
++                case TRANSACTION_getInterfaceHash: {
++                    return "getInterfaceHash";
++                }
++                default: {
++                    return null;
++                }
++            }
++        }
++
++        /** @hide */
++        public java.lang.String getTransactionName(int transactionCode) {
++            return getDefaultTransactionName(transactionCode);
++        }
++
++        @Override
++        public boolean onTransact(int code, android.os.Parcel data, android.os.Parcel reply, int flags)
++                throws android.os.RemoteException {
++            java.lang.String descriptor = DESCRIPTOR;
++            if (code >= android.os.IBinder.FIRST_CALL_TRANSACTION
++                    && code <= android.os.IBinder.LAST_CALL_TRANSACTION) {
++                data.enforceInterface(descriptor);
++            }
++            if (code == INTERFACE_TRANSACTION) {
++                reply.writeString(descriptor);
++                return true;
++            } else if (code == TRANSACTION_getInterfaceVersion) {
++                reply.writeNoException();
++                reply.writeInt(getInterfaceVersion());
++                return true;
++            } else if (code == TRANSACTION_getInterfaceHash) {
++                reply.writeNoException();
++                reply.writeString(getInterfaceHash());
++                return true;
++            }
++            switch (code) {
++                case TRANSACTION_cryptoeng_invoke_command: {
++                    byte[] _arg0;
++                    _arg0 = data.createByteArray();
++                    data.enforceNoDataAvail();
++                    byte[] _result = this.cryptoeng_invoke_command(_arg0);
++                    reply.writeNoException();
++                    reply.writeByteArray(_result);
++                    break;
++                }
++                default: {
++                    return super.onTransact(code, data, reply, flags);
++                }
++            }
++            return true;
++        }
++
++        private static class Proxy implements vendor.oplus.hardware.cryptoeng.ICryptoeng {
++            private android.os.IBinder mRemote;
++
++            Proxy(android.os.IBinder remote) {
++                mRemote = remote;
++            }
++
++            private int mCachedVersion = -1;
++            private String mCachedHash = "-1";
++
++            @Override
++            public android.os.IBinder asBinder() {
++                return mRemote;
++            }
++
++            public java.lang.String getInterfaceDescriptor() {
++                return DESCRIPTOR;
++            }
++
++            @Override
++            public byte[] cryptoeng_invoke_command(byte[] in_buf) throws android.os.RemoteException {
++                android.os.Parcel _data = android.os.Parcel.obtain(asBinder());
++                android.os.Parcel _reply = android.os.Parcel.obtain();
++                byte[] _result;
++                try {
++                    _data.writeInterfaceToken(DESCRIPTOR);
++                    _data.writeByteArray(in_buf);
++                    boolean _status = mRemote.transact(Stub.TRANSACTION_cryptoeng_invoke_command, _data, _reply, 0);
++                    if (!_status) {
++                        throw new android.os.RemoteException("Method cryptoeng_invoke_command is unimplemented.");
++                    }
++                    _reply.readException();
++                    _result = _reply.createByteArray();
++                } finally {
++                    _reply.recycle();
++                    _data.recycle();
++                }
++                return _result;
++            }
++
++            @Override
++            public int getInterfaceVersion() throws android.os.RemoteException {
++                if (mCachedVersion == -1) {
++                    android.os.Parcel data = android.os.Parcel.obtain(asBinder());
++                    android.os.Parcel reply = android.os.Parcel.obtain();
++                    try {
++                        data.writeInterfaceToken(DESCRIPTOR);
++                        boolean _status = mRemote.transact(Stub.TRANSACTION_getInterfaceVersion, data, reply, 0);
++                        reply.readException();
++                        mCachedVersion = reply.readInt();
++                    } finally {
++                        reply.recycle();
++                        data.recycle();
++                    }
++                }
++                return mCachedVersion;
++            }
++
++            @Override
++            public synchronized String getInterfaceHash() throws android.os.RemoteException {
++                if ("-1".equals(mCachedHash)) {
++                    android.os.Parcel data = android.os.Parcel.obtain(asBinder());
++                    android.os.Parcel reply = android.os.Parcel.obtain();
++                    try {
++                        data.writeInterfaceToken(DESCRIPTOR);
++                        boolean _status = mRemote.transact(Stub.TRANSACTION_getInterfaceHash, data, reply, 0);
++                        reply.readException();
++                        mCachedHash = reply.readString();
++                    } finally {
++                        reply.recycle();
++                        data.recycle();
++                    }
++                }
++                return mCachedHash;
++            }
++        }
++
++        static final int TRANSACTION_cryptoeng_invoke_command = (android.os.IBinder.FIRST_CALL_TRANSACTION + 0);
++        static final int TRANSACTION_getInterfaceVersion = (android.os.IBinder.FIRST_CALL_TRANSACTION + 16777214);
++        static final int TRANSACTION_getInterfaceHash = (android.os.IBinder.FIRST_CALL_TRANSACTION + 16777213);
++
++        /** @hide */
++        public int getMaxTransactionId() {
++            return 16777214;
++        }
++    }
++
++    public static final java.lang.String DESCRIPTOR = "vendor$oplus$hardware$cryptoeng$ICryptoeng".replace('$', '.');
++
++    public byte[] cryptoeng_invoke_command(byte[] in_buf) throws android.os.RemoteException;
++
++    public int getInterfaceVersion() throws android.os.RemoteException;
++
++    public String getInterfaceHash() throws android.os.RemoteException;
++}
+diff --git a/sepolicy/qti/vendor/file_contexts b/sepolicy/qti/vendor/file_contexts
+index 3351c500..be1b9662 100644
+--- a/sepolicy/qti/vendor/file_contexts
++++ b/sepolicy/qti/vendor/file_contexts
+@@ -31,7 +31,6 @@
+ /vendor/bin/hw/vendor\.oplus\.hardware\.commondcs-service    u:object_r:hal_oplus_commondcs_aidl_exec:s0
+ 
+ # CryptoEng
+-/(odm|vendor/odm)/bin/hw/vendor\.oplus\.hardware\.cryptoeng@1\.0-service           u:object_r:hal_cryptoeng_default_exec:s0
+ 
+ # Display
+ /vendor/bin/hw/vendor\.lineage\.livedisplay-service\.oplus          u:object_r:hal_lineage_livedisplay_qti_exec:s0
+diff --git a/sepolicy/qti/vendor/hwservice_contexts b/sepolicy/qti/vendor/hwservice_contexts
+index d5046f67..1c3d7f34 100644
+--- a/sepolicy/qti/vendor/hwservice_contexts
++++ b/sepolicy/qti/vendor/hwservice_contexts
+@@ -16,7 +16,6 @@ vendor.oplus.hardware.charger::ICharger             u:object_r:vendor_hal_charge
+ vendor.oplus.hardware.commondcs::ICommonDcsHalService    u:object_r:vendor_hal_commondcs_hwservice:s0
+ 
+ # Cryptoeng
+-vendor.oplus.hardware.cryptoeng::ICryptoeng         u:object_r:hal_cryptoeng_hwservice:s0
+ 
+ # Display
+ vendor.display.PanelChaplin::IPanelChaplin          u:object_r:hal_graphics_composer_hwservice:s0
+diff --git a/vintf/device_framework_matrix.xml b/vintf/device_framework_matrix.xml
+index b7375069..0cb265b5 100644
+--- a/vintf/device_framework_matrix.xml
++++ b/vintf/device_framework_matrix.xml
+@@ -114,6 +114,22 @@
+             <instance>default</instance>
+         </interface>
+     </hal>
++    <hal format="hidl" optional="true">
++        <name>vendor.oplus.hardware.cryptoeng</name>
++        <version>1.0</version>
++        <interface>
++            <name>ICryptoeng</name>
++            <instance>default</instance>
++        </interface>
++    </hal>
++    <hal format="aidl" optional="true">
++        <name>vendor.oplus.hardware.cryptoeng</name>
++        <version>1</version>
++        <interface>
++            <name>ICryptoeng</name>
++            <instance>default</instance>
++        </interface>
++    </hal>
+     <hal format="aidl" optional="true">
+         <name>vendor.oplus.hardware.communicationcenter</name>
+         <version>1-2</version>

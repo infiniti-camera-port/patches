@@ -1,0 +1,22 @@
+From d42647582c26dd2872e41a37465f155ecbd454c1 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 7 Jul 2026 15:54:26 -0600
+Subject: [PATCH 13/22] oplus-fwk: move oplus-fwk service to horae sepolicy
+ domain
+
+(cherry picked from commit 0b7fa55eec3c31fa70e76af61f3674bc051d7428)
+---
+ sepolicy/qti/private/horae.te | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/sepolicy/qti/private/horae.te b/sepolicy/qti/private/horae.te
+index c4c7ad69..3d3e664c 100644
+--- a/sepolicy/qti/private/horae.te
++++ b/sepolicy/qti/private/horae.te
+@@ -15,3 +15,6 @@ allow horae horae_service:service_manager find;
+ allow horae osense_service:service_manager find;
+ allow horae surfaceflinger_service:service_manager find;
+ allow horae thermal_service:service_manager find;
++
++# gallery(platform_app)→horae binder for AI-editor perf-boost; observed AVC on the crDroid lane
++allow platform_app horae:binder call;

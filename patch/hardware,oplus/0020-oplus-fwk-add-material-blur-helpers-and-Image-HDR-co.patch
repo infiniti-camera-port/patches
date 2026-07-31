@@ -1,0 +1,534 @@
+From dc8f07fbd07ad9627a66c70d0b9c3466bf09d7ce Mon Sep 17 00:00:00 2001
+From: Jonas Salo <salomannen1234@gmail.com>
+Date: Wed, 8 Jul 2026 17:46:48 +0200
+Subject: [PATCH 20/22] oplus-fwk: add material blur helpers and Image HDR
+ compatibility shim
+
+Framework-side surfaces the OEM camera/gallery stack expects:
+
+- OplusBlurParam / OplusRenderEffect / OplusViewBackgroundRenderEffect
+  material blur helpers, backing the framework RenderEffect hooks.
+- OplusImageHdrImpl compatibility shim for the Image HDR path.
+
+Squashed by topic from the m4 refinement series.
+
+(cherry picked from commit ef58f2a6e8cd8154c8631f3d470a69a82f012e56)
+---
+ .../com/oplus/graphics/OplusBlurParam.java    | 150 ++++++++++--------
+ .../com/oplus/graphics/OplusRenderEffect.java |  26 +--
+ .../com/oplus/media/OplusImageHdrImpl.java    | 112 +++++++------
+ .../view/OplusViewBackgroundRenderEffect.java |  75 ++++++++-
+ 4 files changed, 226 insertions(+), 137 deletions(-)
+
+diff --git a/oplus-fwk/src/com/oplus/graphics/OplusBlurParam.java b/oplus-fwk/src/com/oplus/graphics/OplusBlurParam.java
+index f438160e..0694ea6d 100644
+--- a/oplus-fwk/src/com/oplus/graphics/OplusBlurParam.java
++++ b/oplus-fwk/src/com/oplus/graphics/OplusBlurParam.java
+@@ -6,21 +6,14 @@ import com.oplus.view.OplusSmoothRoundedManager;
+ import java.util.Arrays;
+ import java.util.Objects;
+ 
+-/* JADX INFO: loaded from: classes.dex */
+ public class OplusBlurParam {
+-    private static final int BLUR_ARCYLIC_PARAMS_NUM = 4;
++    private static final int BLUR_PARAMS_NUM_SUM = 18;
+     public static final int BLUR_BLEND_MODE_COLORDODGE = 3;
+     public static final int BLUR_BLEND_MODE_COLORMIX = 1;
+     public static final int BLUR_BLEND_MODE_DEFAULT = 0;
+     public static final int BLUR_BLEND_MODE_GLOW_COLORDODGE = 5;
+     public static final int BLUR_BLEND_MODE_GLOW_OVERLAY = 4;
+     public static final int BLUR_BLEND_MODE_OVERLAY = 2;
+-    private static final int BLUR_MATERIAL_PARAMS_NUM = 9;
+-    private static final int BLUR_MIRROR_PARAMS_NUM = 2;
+-    private static final int BLUR_OPT_PARAMS_NUM = 1;
+-    private static final int BLUR_PARAMS_NUM_SUM = 18;
+-    private static final int BLUR_SMOOTH_CORNER_TYPE_NUM = 1;
+-    private static final int BLUR_SMOOTH_CORNER_WEIGHT_NUM = 1;
+     public static final int BLUR_TILE_MODE_CLAMP = 3;
+     public static final int BLUR_TILE_MODE_DECAL = 4;
+     public static final int BLUR_TILE_MODE_DEFAULT = 0;
+@@ -31,115 +24,132 @@ public class OplusBlurParam {
+     public static final int BLUR_TYPE_GAUSSIAN = 4;
+     public static final int BLUR_TYPE_ORIGINAL = 1;
+     public static final int BLUR_TYPE_QUALITY_KAWASE = 3;
+-    private static final int COLOR_SIZE = 4;
+-    private static final int CORNER_TYPE = SystemProperties.getInt("persist.ux.debug.corner_type", 0);
+     public static final float DEFAULT_SMOOTH_CORNER_WEIGHT = 2.0f;
++    private static final int CORNER_TYPE = SystemProperties.getInt("persist.ux.debug.corner_type", 0);
+     private static final String TAG = "OplusBlurParam";
+-    private int mBlurType = 0;
+-    private int mTileMode = 0;
++
++    private int mBlurType = BLUR_TYPE_DEFAULT;
++    private int mTileMode = BLUR_TILE_MODE_DEFAULT;
+     private float mZoomFactor = 1.0f;
+-    private int mBlendMode = 0;
+-    private float[] mBlendColor = {0.0f, 0.0f, 0.0f, 0.0f};
+-    private float[] mMixColor = {0.0f, 0.0f, 0.0f, 0.0f};
+-    private float[] mBlurColor = {0.0f, 0.0f, 0.0f, 0.0f};
++    private int mBlendMode = BLUR_BLEND_MODE_DEFAULT;
++    private final float[] mBlendColor = {0.0f, 0.0f, 0.0f, 0.0f};
++    private final float[] mMixColor = {0.0f, 0.0f, 0.0f, 0.0f};
++    private final float[] mBlurColor = {0.0f, 0.0f, 0.0f, 0.0f};
+     private float mSmoothCornerWeight = OplusSmoothRoundedManager.getNonWight();
+     private int mSmoothCornerType = OplusSmoothRoundedManager.getDefaultSmoothType();
+ 
+-    public void setBlurType(int type) {
+-        this.mBlurType = type;
++    public OplusBlurParam() {
+     }
+ 
+-    public void setMirrorParams(int mode, float factor) {
+-        this.mTileMode = mode;
+-        this.mZoomFactor = factor;
++    public void setBlurType(int blurType) {
++        mBlurType = blurType;
++    }
++
++    public void setBlurRadius(int blurRadius) {
++    }
++
++    public void setMaterialParams(int material, float[] colorParams, float[] weightParams) {
++        mBlendMode = material;
++        copyColor(colorParams, mBlendColor);
++        copyColor(weightParams, mMixColor);
+     }
+ 
+-    public void setMaterialParams(int mode, float[] blendC, float[] mixC) {
+-        this.mBlendMode = mode;
+-        this.mBlendColor[0] = blendC[0];
+-        this.mBlendColor[1] = blendC[1];
+-        this.mBlendColor[2] = blendC[2];
+-        this.mBlendColor[3] = blendC[3];
+-        this.mMixColor[0] = mixC[0];
+-        this.mMixColor[1] = mixC[1];
+-        this.mMixColor[2] = mixC[2];
+-        this.mMixColor[3] = mixC[3];
++    public void setMirrorParams(int mode, float factor) {
++        mTileMode = mode;
++        mZoomFactor = factor;
+     }
+ 
+     public void setArcylicParams(float[] arcylicColor) {
+-        this.mBlurColor[0] = arcylicColor[0];
+-        this.mBlurColor[1] = arcylicColor[1];
+-        this.mBlurColor[2] = arcylicColor[2];
+-        this.mBlurColor[3] = arcylicColor[3];
++        copyColor(arcylicColor, mBlurColor);
++    }
++
++    public void setSmoothCornerType(int cornerType) {
++        mSmoothCornerType = cornerType;
+     }
+ 
+     public void setSmoothCornerWeight(float weight) {
+         if (weight <= 0.0f) {
+             Log.e(TAG, "IllegalArgument for setSmoothCornerWeight " + weight);
+-        } else {
+-            this.mSmoothCornerWeight = CORNER_TYPE == 0 ? weight : OplusSmoothRoundedManager.getDefaultG2Weight();
+-            Log.d(TAG, "setSmoothCornerWeight " + weight);
++            return;
+         }
++        mSmoothCornerWeight = CORNER_TYPE == 0 ? weight
++                : OplusSmoothRoundedManager.getDefaultG2Weight();
+     }
+ 
+     public float getSmoothCornerWeight() {
+-        return CORNER_TYPE == 0 ? this.mSmoothCornerWeight : OplusSmoothRoundedManager.getDefaultG2Weight();
++        return CORNER_TYPE == 0 ? mSmoothCornerWeight
++                : OplusSmoothRoundedManager.getDefaultG2Weight();
+     }
+ 
+     public int getSmoothCornerType() {
+-        return CORNER_TYPE == 0 ? this.mSmoothCornerType : OplusSmoothRoundedManager.getG2CornerType();
+-    }
+-
+-    public void setSmoothCornerType(int smoothCornerType) {
+-        this.mSmoothCornerType = smoothCornerType;
++        return CORNER_TYPE == 0 ? mSmoothCornerType : OplusSmoothRoundedManager.getG2CornerType();
+     }
+ 
+     public int getParamsSize() {
+-        return 18;
++        return BLUR_PARAMS_NUM_SUM;
+     }
+ 
+     public float[] toFloatArray() {
+-        float[] floatArray = {this.mBlurType, this.mTileMode, this.mZoomFactor, this.mBlendMode, this.mBlendColor[0], this.mBlendColor[1], this.mBlendColor[2], this.mBlendColor[3], this.mMixColor[0], this.mMixColor[1], this.mMixColor[2], this.mMixColor[3], this.mBlurColor[0], this.mBlurColor[1], this.mBlurColor[2], this.mBlurColor[3], this.mSmoothCornerWeight, this.mSmoothCornerType};
+-        return floatArray;
++        return new float[] {
++                mBlurType,
++                mTileMode,
++                mZoomFactor,
++                mBlendMode,
++                mBlendColor[0],
++                mBlendColor[1],
++                mBlendColor[2],
++                mBlendColor[3],
++                mMixColor[0],
++                mMixColor[1],
++                mMixColor[2],
++                mMixColor[3],
++                mBlurColor[0],
++                mBlurColor[1],
++                mBlurColor[2],
++                mBlurColor[3],
++                mSmoothCornerWeight,
++                mSmoothCornerType,
++        };
+     }
+ 
+     public void fromFloatArray(float[] floatArray) {
+-        if (floatArray.length != 18) {
++        if (floatArray == null || floatArray.length != BLUR_PARAMS_NUM_SUM) {
+             Log.w(TAG, "float array size is not equal params num in fromFloatArray");
+             return;
+         }
+-        this.mBlurType = Math.round(floatArray[0]);
+-        this.mTileMode = Math.round(floatArray[1]);
+-        this.mZoomFactor = floatArray[2];
+-        this.mBlendMode = Math.round(floatArray[3]);
+-        this.mBlendColor[0] = floatArray[4];
+-        this.mBlendColor[1] = floatArray[5];
+-        this.mBlendColor[2] = floatArray[6];
+-        this.mBlendColor[3] = floatArray[7];
+-        this.mMixColor[0] = floatArray[8];
+-        this.mMixColor[1] = floatArray[9];
+-        this.mMixColor[2] = floatArray[10];
+-        this.mMixColor[3] = floatArray[11];
+-        this.mBlurColor[0] = floatArray[12];
+-        this.mBlurColor[1] = floatArray[13];
+-        this.mBlurColor[2] = floatArray[14];
+-        this.mBlurColor[3] = floatArray[15];
+-        this.mSmoothCornerWeight = floatArray[16];
+-        this.mSmoothCornerType = Math.round(floatArray[17]);
++        mBlurType = Math.round(floatArray[0]);
++        mTileMode = Math.round(floatArray[1]);
++        mZoomFactor = floatArray[2];
++        mBlendMode = Math.round(floatArray[3]);
++        System.arraycopy(floatArray, 4, mBlendColor, 0, 4);
++        System.arraycopy(floatArray, 8, mMixColor, 0, 4);
++        System.arraycopy(floatArray, 12, mBlurColor, 0, 4);
++        mSmoothCornerWeight = floatArray[16];
++        mSmoothCornerType = Math.round(floatArray[17]);
+     }
+ 
++    @Override
+     public boolean equals(Object obj) {
+         if (this == obj) {
+             return true;
+         }
+-        if (obj == null || !(obj instanceof OplusBlurParam)) {
++        if (!(obj instanceof OplusBlurParam)) {
+             return false;
+         }
+-        OplusBlurParam paramsObj = (OplusBlurParam) obj;
+-        return Arrays.equals(toFloatArray(), paramsObj.toFloatArray());
++        return Arrays.equals(toFloatArray(), ((OplusBlurParam) obj).toFloatArray());
+     }
+ 
++    @Override
+     public int hashCode() {
+-        return Objects.hash(Integer.valueOf(this.mBlurType), Integer.valueOf(this.mTileMode), Float.valueOf(this.mZoomFactor), Integer.valueOf(this.mBlendMode), this.mBlendColor, this.mMixColor, this.mBlurColor);
++        return Objects.hash(mBlurType, mTileMode, mZoomFactor, mBlendMode,
++                Arrays.hashCode(mBlendColor), Arrays.hashCode(mMixColor),
++                Arrays.hashCode(mBlurColor), mSmoothCornerWeight, mSmoothCornerType);
++    }
++
++    private static void copyColor(float[] source, float[] target) {
++        if (source == null) {
++            return;
++        }
++        System.arraycopy(source, 0, target, 0, Math.min(source.length, target.length));
+     }
+ }
+diff --git a/oplus-fwk/src/com/oplus/graphics/OplusRenderEffect.java b/oplus-fwk/src/com/oplus/graphics/OplusRenderEffect.java
+index cd2070dd..b82661da 100644
+--- a/oplus-fwk/src/com/oplus/graphics/OplusRenderEffect.java
++++ b/oplus-fwk/src/com/oplus/graphics/OplusRenderEffect.java
+@@ -1,38 +1,28 @@
+ package com.oplus.graphics;
+ 
+ import android.graphics.RenderEffect;
++import android.util.MathUtils;
+ 
+-/*
+- * Stub — OplusRenderEffect is an OEM (ColorOS/OOS) utility that builds a *gradient*
+- * blur RenderEffect via a proprietary android.graphics.RenderEffect.createGradientBlurEffect(...)
+- * extension that exists only in the OEM framework. That extension does NOT exist on
+- * LineageOS, so we cannot construct the OEM gradient blur. Returning null is safe:
+- * the shipped consumer (com.oplus.gallery2) hands the result to View.setRenderEffect(...),
+- * and setRenderEffect(null) simply clears the effect (the gradient blur just does not
+- * render). Restores the class so gallery no longer dies with NoClassDefFoundError —
+- * same "accepted, silently not rendered" philosophy as OplusBlurParam.
+- *
+- * Surface referenced by com.oplus.gallery2 (RE'd from shipped dex):
+- *   static createGradientBlurEffect(FFZFIII)Landroid/graphics/RenderEffect;
+- * (sibling OOS overloads included for faithful closure; all degrade to null.)
+- */
+-public class OplusRenderEffect {
++public final class OplusRenderEffect {
+     private OplusRenderEffect() {
+     }
+ 
+     public static RenderEffect createGradientBlurEffect(float startRadius, float endRadius,
+             boolean isVertical, float speed) {
+-        return null;
++        return createGradientBlurEffect(startRadius, endRadius, isVertical, speed, 0, 0, 0);
+     }
+ 
+     public static RenderEffect createGradientBlurEffect(float startRadius, float endRadius,
+             boolean isVertical, float speed, int blendMode, int blendC, int mixC) {
+-        return null;
++        return createGradientBlurEffect(startRadius, endRadius, isVertical, speed, blendMode,
++                blendC, mixC, null);
+     }
+ 
+     public static RenderEffect createGradientBlurEffect(float startRadius, float endRadius,
+             boolean isVertical, float speed, int blendMode, int blendC, int mixC,
+             RenderEffect inputEffect) {
+-        return null;
++        return RenderEffect.createGradientBlurEffect(MathUtils.max(0.0f, startRadius),
++                MathUtils.max(0.0f, endRadius), isVertical, MathUtils.max(0.0f, speed),
++                blendMode, blendC, mixC, inputEffect);
+     }
+ }
+diff --git a/oplus-fwk/src/com/oplus/media/OplusImageHdrImpl.java b/oplus-fwk/src/com/oplus/media/OplusImageHdrImpl.java
+index 3fab1d21..1d02a91c 100644
+--- a/oplus-fwk/src/com/oplus/media/OplusImageHdrImpl.java
++++ b/oplus-fwk/src/com/oplus/media/OplusImageHdrImpl.java
+@@ -1,75 +1,97 @@
+-/*
+- * Copyright (C) 2024 The LineageOS Project
+- *
+- * SPDX-License-Identifier: Apache-2.0
+- *
+- * Reconstructed from OOS 16.0.8 oplus-framework.jar (com.oplus.media.OplusImageHdrImpl).
+- * The OEM class is JNI-backed by liboplusImageHdrImpl.so, which does NOT ship in this
+- * LineageOS build. Declaring the OEM native methods / loadLibrary would throw
+- * UnsatisfiedLinkError at class-init and hard crash the caller. These pure-Java stubs
+- * return safe defaults so OppoGallery2 falls back to SDR base-image decoding when the
+- * OEM ultra-HDR gainmap path is unavailable.
+- */
+-
+ package com.oplus.media;
+ 
+ import android.graphics.Bitmap;
+ import android.graphics.BitmapFactory;
++import android.graphics.Gainmap;
++import android.util.Log;
+ 
+ import java.io.FileDescriptor;
++import java.io.IOException;
+ import java.io.InputStream;
+ import java.io.OutputStream;
+ 
+ public class OplusImageHdrImpl {
+-    private static final String TAG = "OplusImageHdrImpl_Java";
++    private static final String TAG = "OplusImageHdrImpl";
+ 
+-    public OplusImageHdrImpl() {
++    public static class GainmapInfo {
++        public int mBaseImageType;
++        public float mDisplayRatioHdr;
++        public float mDisplayRatioSdr;
++        public float[] mEpsilonHdr;
++        public float[] mEpsilonSdr;
++        public Bitmap mGainmap;
++        public float[] mGainmapGamma;
++        public float[] mGainmapRatioMax;
++        public float[] mGainmapRatioMin;
++        public float mHdrScale;
++        public boolean mIsJpegR;
++        public int mType;
+     }
+ 
+-    public static boolean compressAlpha8(Bitmap bitmap, Bitmap.CompressFormat format,
+-            int quality, OutputStream os) {
+-        return false;
++    public static GainmapInfo demuxFile(FileDescriptor fd) throws IOException {
++        return decodeGainmapAndMetadata(fd, 1);
+     }
+ 
+-    public static Bitmap decodeBaseJpeg(FileDescriptor fd, BitmapFactory.Options options) {
+-        return null;
++    public static GainmapInfo demuxFile(InputStream inputStream) {
++        return decodeGainmapAndMetadata(inputStream, 1);
+     }
+ 
+-    public static Bitmap decodeBaseJpeg(InputStream is, BitmapFactory.Options options) {
+-        return null;
++    public static Bitmap decodeBaseJpeg(FileDescriptor fd, BitmapFactory.Options opts)
++            throws IOException {
++        return BitmapFactory.decodeFileDescriptor(fd, null, opts);
+     }
+ 
+-    public static GainmapInfo decodeGainmapAndMetadata(FileDescriptor fd, int type) {
+-        return null;
++    public static Bitmap decodeBaseJpeg(InputStream inputStream, BitmapFactory.Options opts) {
++        return BitmapFactory.decodeStream(inputStream, null, opts);
+     }
+ 
+-    public static GainmapInfo decodeGainmapAndMetadata(InputStream is, int type) {
+-        return null;
++    public static GainmapInfo decodeGainmapAndMetadata(FileDescriptor fd, int sampleSize)
++            throws IOException {
++        BitmapFactory.Options opts = new BitmapFactory.Options();
++        opts.inSampleSize = Math.max(1, sampleSize);
++        Bitmap bitmap = BitmapFactory.decodeFileDescriptor(fd, null, opts);
++        return fromBitmap(bitmap);
+     }
+ 
+-    public static GainmapInfo demuxFile(FileDescriptor fd) {
+-        return null;
++    public static GainmapInfo decodeGainmapAndMetadata(InputStream inputStream, int sampleSize) {
++        BitmapFactory.Options opts = new BitmapFactory.Options();
++        opts.inSampleSize = Math.max(1, sampleSize);
++        Bitmap bitmap = BitmapFactory.decodeStream(inputStream, null, opts);
++        return fromBitmap(bitmap);
+     }
+ 
+-    public static GainmapInfo demuxFile(InputStream is) {
+-        return null;
++    public static boolean compressAlpha8(
++            Bitmap bitmap, Bitmap.CompressFormat format, int quality, OutputStream stream) {
++        if (bitmap == null || format == null || stream == null) {
++            Log.e(TAG, "bitmap, format, or stream is null");
++            return false;
++        }
++        if (quality < 0 || quality > 100) {
++            Log.e(TAG, "quality must be 0..100");
++            return false;
++        }
++        return bitmap.compress(format, quality, stream);
+     }
+ 
+-    public static class GainmapInfo {
+-        public int mBaseImageType;
+-        public float mDisplayRatioHdr;
+-        public float mDisplayRatioSdr;
+-        public float[] mEpsilonHdr;
+-        public float[] mEpsilonSdr;
+-        public Bitmap mGainmap;
+-        public float[] mGainmapGamma;
+-        public float[] mGainmapRatioMax;
+-        public float[] mGainmapRatioMin;
+-        public float mHdrScale;
+-        public boolean mIsJpegR;
+-        public int mType;
+-
+-        public GainmapInfo() {
++    private static GainmapInfo fromBitmap(Bitmap bitmap) {
++        if (bitmap == null || !bitmap.hasGainmap()) {
++            return null;
+         }
++
++        Gainmap gainmap = bitmap.getGainmap();
++        GainmapInfo info = new GainmapInfo();
++        info.mGainmap = gainmap.getGainmapContents();
++        info.mGainmapRatioMin = gainmap.getRatioMin();
++        info.mGainmapRatioMax = gainmap.getRatioMax();
++        info.mGainmapGamma = gainmap.getGamma();
++        info.mEpsilonSdr = gainmap.getEpsilonSdr();
++        info.mEpsilonHdr = gainmap.getEpsilonHdr();
++        info.mDisplayRatioSdr = gainmap.getMinDisplayRatioForHdrTransition();
++        info.mDisplayRatioHdr = gainmap.getDisplayRatioForFullHdr();
++        info.mHdrScale = gainmap.getDisplayRatioForFullHdr();
++        info.mType = gainmap.getGainmapDirection();
++        info.mBaseImageType = 0;
++        info.mIsJpegR = true;
++        return info;
+     }
+ }
+diff --git a/oplus-fwk/src/com/oplus/view/OplusViewBackgroundRenderEffect.java b/oplus-fwk/src/com/oplus/view/OplusViewBackgroundRenderEffect.java
+index fa37693f..6f8d2065 100644
+--- a/oplus-fwk/src/com/oplus/view/OplusViewBackgroundRenderEffect.java
++++ b/oplus-fwk/src/com/oplus/view/OplusViewBackgroundRenderEffect.java
+@@ -1,16 +1,83 @@
+ package com.oplus.view;
+ 
+ import android.graphics.RenderEffect;
++import android.util.Log;
++import android.view.SurfaceControl;
+ import android.view.View;
+ 
+-/* Closure stub. Only the static setter referenced by OppoGallery2 is
+- * provided; no-op so absence of the OEM background-render-effect path
+- * degrades gracefully. */
+-public class OplusViewBackgroundRenderEffect {
++public final class OplusViewBackgroundRenderEffect {
++    private static final String TAG = "OplusViewBackgroundRenderEffect";
++
++    public static final int TYPE_VFX_BOOTREG_RIPPLE = 1024;
++    public static final int TYPE_VFX_CHARGING_RIPPLE = 512;
++    public static final int TYPE_VFX_CLOSE = 0;
++    public static final int TYPE_VFX_DISPLAY_RIPPLE = 64;
++    public static final int TYPE_VFX_FP_RIPPLE = 256;
++    public static final int TYPE_VFX_HSL_ANIMATION = 2;
++    public static final int TYPE_VFX_INSTALL_RIPPLE = 128;
++    public static final int TYPE_VFX_OVAL_FP = 4;
++    public static final int TYPE_VFX_OVAL_USB = 8;
++    public static final int TYPE_VFX_OVAL_WIRELESS = 16;
++    public static final int TYPE_VFX_RUNNING = 1;
++    public static final int TYPE_VFX_SINGLE_RIPPLE = 32;
+ 
+     private OplusViewBackgroundRenderEffect() {
+     }
+ 
+     public static void setBackgroundRenderEffect(RenderEffect renderEffect, View view) {
++        if (view == null) {
++            return;
++        }
++        view.setBackdropRenderEffect(renderEffect);
++    }
++
++    public static boolean startVfxAnimationBySurfaceController(SurfaceControl.Transaction transaction,
++            int type, float effectDegree, float[] center, float startRadius, float endRadius,
++            SurfaceControl surfaceControl) {
++        if (!isParametersCompliant(transaction, effectDegree, center, startRadius, endRadius)) {
++            return false;
++        }
++        if (surfaceControl == null) {
++            Log.e(TAG, "startVfxAnimationBySurfaceController surfaceControl cannot null");
++            return false;
++        }
++        return false;
++    }
++
++    public static boolean startVfxAnimationByView(SurfaceControl.Transaction transaction, int type,
++            float effectDegree, float[] center, float startRadius, float endRadius, View target) {
++        if (!isParametersCompliant(transaction, effectDegree, center, startRadius, endRadius)) {
++            return false;
++        }
++        if (target == null) {
++            Log.e(TAG, "startVfxAnimationByView target cannot null");
++            return false;
++        }
++        if (!target.isAttachedToWindow()) {
++            Log.e(TAG, "startVfxAnimationByView view not attached to window");
++            return false;
++        }
++        return false;
++    }
++
++    private static boolean isParametersCompliant(SurfaceControl.Transaction transaction,
++            float effectDegree, float[] center, float startRadius, float endRadius) {
++        if (transaction == null) {
++            Log.e(TAG, "isParametersCompliant transaction cannot null");
++            return false;
++        }
++        if (center == null) {
++            Log.e(TAG, "isParametersCompliant center cannot null");
++            return false;
++        }
++        if (center.length != 2) {
++            Log.e(TAG, "isParametersCompliant center point length cannot 2");
++            return false;
++        }
++        if (effectDegree < 0.0f || startRadius < 0.0f || endRadius < 0.0f) {
++            Log.e(TAG, "isParametersCompliant radius/progress cannot be negative");
++            return false;
++        }
++        return true;
+     }
+ }

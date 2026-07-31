@@ -1,0 +1,28 @@
+From b10420a123cf92f3595ff43c29ae095f619d5481 Mon Sep 17 00:00:00 2001
+From: realahnet <syedmusicrealise@gmail.com>
+Date: Mon, 18 May 2026 08:32:56 -0400
+Subject: [PATCH 3/8] core: treat redraws and stretch effects as movement
+
+Solves stretch animations not voting high hint. This is the second
+ARR-focused change to View after b7b6905e1153
+
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+---
+ core/java/android/view/View.java | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/core/java/android/view/View.java b/core/java/android/view/View.java
+index b1949cf01f9e..2294339551a9 100644
+--- a/core/java/android/view/View.java
++++ b/core/java/android/view/View.java
+@@ -24117,6 +24117,10 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
+ 
+                     mPrivateFlags4 |= PFLAG4_HAS_DRAWN;
+ 
++		             // Treat as a move for preferred frame rate purposes
++		             // This solves refresh rate drops during any stretch effects
++                    mPrivateFlags4 |= PFLAG4_HAS_MOVED;
++
+                     // Fast path for layouts with no backgrounds
+                     if ((mPrivateFlags & PFLAG_SKIP_DRAW) == PFLAG_SKIP_DRAW) {
+                         dispatchDraw(canvas);

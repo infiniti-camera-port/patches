@@ -1,0 +1,38 @@
+From 91d967876869794e4b05800ba7daa7c7df397d05 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Tue, 7 Jul 2026 15:54:24 -0600
+Subject: [PATCH 12/22] oplus-fwk: declare FIDO CA HALs in device framework
+ compatibility matrix
+
+(cherry picked from commit 28ffa6d46d2ff0cbff72b2bfd65379becb4ec61b)
+---
+ vintf/device_framework_matrix.xml | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/vintf/device_framework_matrix.xml b/vintf/device_framework_matrix.xml
+index e1c71f72..b7375069 100644
+--- a/vintf/device_framework_matrix.xml
++++ b/vintf/device_framework_matrix.xml
+@@ -33,6 +33,22 @@
+             <instance>default</instance>
+         </interface>
+     </hal>
++    <hal format="aidl" optional="true">
++        <name>vendor.oplus.hardware.fido.fidoca</name>
++        <version>1</version>
++        <interface>
++            <name>IFidoDaemon</name>
++            <instance>default</instance>
++        </interface>
++    </hal>
++    <hal format="aidl" optional="true">
++        <name>vendor.oplus.hardware.fido.fido2ca</name>
++        <version>1</version>
++        <interface>
++            <name>IFidoDaemon</name>
++            <instance>default</instance>
++        </interface>
++    </hal>
+     <hal format="aidl" optional="true">
+         <name>vendor.oplus.hardware.camera.aon</name>
+         <version>1</version>

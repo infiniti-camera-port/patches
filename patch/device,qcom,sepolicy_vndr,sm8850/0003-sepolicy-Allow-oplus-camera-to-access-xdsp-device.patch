@@ -1,4 +1,4 @@
-From 35d4832726f481f1e19bef1279d99bd664f691d9 Mon Sep 17 00:00:00 2001
+From 838178d538901e80223d2e638df45d7295ffeb48 Mon Sep 17 00:00:00 2001
 From: Hecheng Yu <kde-yyds@qq.com>
 Date: Fri, 27 Mar 2026 18:44:06 +0800
 Subject: [PATCH 3/3] sepolicy: Allow oplus camera to access xdsp device
