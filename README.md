@@ -13,6 +13,10 @@ Manifest consumers already have the eight source series and must not apply
 `patch/` on top. Doing so would double-apply the same commits.
 
 Only `lineage_infiniti-bp4a-userdebug` has been built and runtime-validated.
+That validation is a flashed device test of the promoted graph: build r4
+(`crDroidAndroid-16.0-20260731-infiniti-v12.11-r4.zip`, sha256
+`08eaf7a602deb548efe81b1057e194dbf3c42d6da4394731d1da329493b71fd6`), flashed
+with no overlay present, camera mode switching and stills/video exercised.
 macan, macanc, and fairlady are included in the split repository graph, but
 are not yet built/runtime-validated; they are queued in the approved all-device
 build/static-QA pass. No result is inferred yet. The archived monoliths
@@ -53,12 +57,12 @@ proprietary output. They are direct sync inputs, never portable patch series.
 
 | build path | repository | ref | required SHA |
 | --- | --- | --- | --- |
-| `vendor/oneplus/camera-sm8850-common` | `vendor_oneplus_camera-sm8850-common` | `16.0-infiniti` | `ee141662ce8baccf31e69a4f9e5436cb16ded3e2` |
-| `vendor/oneplus/camera-infiniti` | `vendor_oneplus_camera-infiniti` | `16.0` | `51cb97c2f11c4fd718bcaa5c6c6992cc3625cab4` |
-| `proprietary/vendor/oneplus/camera-sm8850-common` | `proprietary_vendor_oneplus_camera-sm8850-common` | `16.0-infiniti` | `7b6375ecb47d70657b8acfccc9dd7d3390ec80f5` |
-| `proprietary/vendor/oneplus/camera-infiniti` | `proprietary_vendor_oneplus_camera-infiniti` | `16.0` | `484b54c3113de412b4ba385734401217fc0714af` |
-| `vendor/oneplus/sm8850-common` | `proprietary_vendor_oneplus_sm8850-common` | `16.0-infiniti` | `9a87ebee9c2eda1379f75f4710bf87ed078d4fbf` |
-| `vendor/oneplus/infiniti` | `proprietary_vendor_oneplus_infiniti` | `16.0` | `f3b56122d8b362c8a5fcce2b2ecb2a517c6c11b6` |
+| `vendor/oneplus/camera-sm8850-common` | `vendor_oneplus_camera-sm8850-common` | `16.0-infiniti` | `41fd10618f0437e2e57c985b73e42daf3b2b080d` |
+| `vendor/oneplus/camera-infiniti` | `vendor_oneplus_camera-infiniti` | `16.0` | `e57bdeb1ae75c7aa1c2a0577f4a1d14d152a3fa4` |
+| `proprietary/vendor/oneplus/camera-sm8850-common` | `proprietary_vendor_oneplus_camera-sm8850-common` | `16.0-infiniti` | `c9b0760407740e8853bbf660bddc3d407efe09d3` |
+| `proprietary/vendor/oneplus/camera-infiniti` | `proprietary_vendor_oneplus_camera-infiniti` | `16.0` | `31aa2b78ec6b2cee85d446db176e39441c45c7ba` |
+| `vendor/oneplus/sm8850-common` | `proprietary_vendor_oneplus_sm8850-common` | `16.0-infiniti` | `65ffb500cea039fee1f388805a2a7fe3571d8b0c` |
+| `vendor/oneplus/infiniti` | `proprietary_vendor_oneplus_infiniti` | `16.0` | `1088edf652044b1bfff1a5d1e795c6424d95aeba` |
 
 The following is a copy-ready local-manifest core. If the target manifest
 already owns one of these paths, remove its existing project by its exact
@@ -126,17 +130,24 @@ For the retired Lineage lane, see
 [`los-fix-build-patches/README.md`](los-fix-build-patches/README.md). Do not mix
 those four files into the crDroid build overlay or portable profile.
 
-## 16.0.9 staging topic status
+## 16.0.9 promotion status
 
-This branch is the `patches` member of the `staging/16.0.9` topic. It exists so
-the topic spans every repository it touches; it is not a consumer release.
+The `staging/16.0.9` topic has been promoted to the contract branches, and this
+profile was regenerated from the promoted graph afterwards. `main` and
+`staging/16.0.9` carry the same head here; the staging branch is retained per
+the topic-hygiene rule and is not a separate consumer release.
 
-- `patch/` still describes the PROMOTED contract graph. Its `series` base/head
-  SHAs and `sync_only_prerequisites` do NOT match the `staging/16.0.9` pins, and
-  the profile is regenerated from the promoted graph only after the device-test
-  gate passes. Do not apply `patch/` against a staging sync.
+- `patch/` describes the PROMOTED contract graph. Its eight `series` head SHAs
+  and its six `sync_only_prerequisites` are the promoted contract heads, and
+  every recorded `head_tree_sha` equals the corresponding promoted tree. The
+  table above and `patch/series.json` agree; `series.json` is authoritative if
+  they ever diverge.
+- The pre-promotion profile carried a series that re-extracted stock `libui` and
+  `libutils` under private `-stock` names. That relink was the cause of a camera
+  mode-switch crash and has been removed, not merely superseded. Do not resurrect
+  a profile snapshot older than this one.
 - `build-patches/` is graph-independent: each overlay is guarded by the target
   file's own `sha256`, and the `expected_head` pins name external projects that
-  the 16.0.9 bump does not touch. This is the lane the staging build applies.
-- Nothing on this branch has been built, flashed, or runtime-validated. No
-  result should be inferred for any device.
+  the 16.0.9 bump does not touch. It remains the lane the build applies.
+- Runtime validation extends to `infiniti` only, via the r4 artifact named
+  above. No result should be inferred for macan, macanc, or fairlady.
