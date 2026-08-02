@@ -70,6 +70,35 @@ class GitBoundaryTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0, output_of(result))
                 self.assertIn("unsafe executable git config", output_of(result))
 
+    def test_check_only_accepts_the_skip_filters_repo_sync_writes(self) -> None:
+        # `repo sync --no-git-lfs` writes these exact values into every project,
+        # so rejecting the KEY alone makes the overlay unusable on any repo-managed
+        # tree that has git-lfs installed. Only these exact values are tolerated.
+        soong = self.repo_root / "build/soong"
+        self.configure(soong, "filter.lfs.smudge", "git-lfs smudge --skip -- %f")
+        self.configure(soong, "filter.lfs.process", "git-lfs filter-process --skip")
+
+        result = run_overlay(self.overlay, self.repo_root)
+
+        self.assertNotIn("unsafe executable git config", output_of(result))
+
+    def test_check_only_still_rejects_a_hostile_value_under_the_same_key(self) -> None:
+        marker = self.scratch / "lfs-key-hostile-executed"
+        cases = (
+            ("filter.lfs.smudge", f"/usr/bin/touch {marker}; /bin/cat"),
+            ("filter.lfs.process", "/usr/bin/false"),
+            ("filter.lfs.smudge", "git-lfs smudge -- %f"),
+        )
+        for index, (key, value) in enumerate(cases):
+            with self.subTest(key=key, value=value):
+                overlay = copy_overlay(self.scratch / f"lfs-hostile-overlay-{index}")
+                repo_root = create_repo_root(self.scratch / f"lfs-hostile-repo-{index}")
+                self.configure(repo_root / "build/soong", key, value)
+                result = run_overlay(overlay, repo_root)
+                self.assertFalse(marker.exists(), output_of(result))
+                self.assertNotEqual(result.returncode, 0, output_of(result))
+                self.assertIn("unsafe executable git config", output_of(result))
+
     def test_check_only_rejects_include_and_include_if_without_loading_them(self) -> None:
         included = self.scratch / "included-config"
         included.write_text("[filter \"evil\"]\n\tclean = /usr/bin/false\n", encoding="utf-8")
