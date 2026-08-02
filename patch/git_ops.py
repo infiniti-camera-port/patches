@@ -139,7 +139,11 @@ def _validate_local_config(raw: str, kind: str, path: Path) -> None:
         if key in seen:
             raise RunnerError(issue=f"duplicate local Git config key in {kind} repository {path}: {key}")
         seen.add(key)
-        if kind == "prerequisite" and (key, value) in CANONICAL_LFS_CONFIG:
+        # Not restricted by `kind`: repo sync writes these filters into every
+        # project it manages, targets as much as prerequisites. What makes the
+        # exemption safe is the exact (key, value) match, not which repository
+        # it appears in.
+        if (key, value) in CANONICAL_LFS_CONFIG:
             continue
         if EXECUTABLE_CONFIG_PATTERN.match(key):
             raise RunnerError(issue=f"unsafe executable git config in {kind} repository {path}: {key}")
