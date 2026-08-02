@@ -34,8 +34,8 @@ if (($# == 1)); then
 fi
 
 tree_root="${1:-${ANDROID_BUILD_ROOT:-/srv/android/cleanroom}}"
-script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-patches_root="$(CDPATH= cd -- "$script_dir/.." && pwd)"
+script_dir="$(unset CDPATH; cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+patches_root="$(unset CDPATH; cd -- "$script_dir/.." && pwd)"
 build_patches_dir="$patches_root/build-patches"
 overlay_manifest="$build_patches_dir/manifest.yml"
 
