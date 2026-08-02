@@ -35,6 +35,14 @@ CANONICAL_LFS_CONFIG: Final = (
     ("filter.lfs.smudge", "git-lfs smudge -- %f"),
     ("filter.lfs.process", "git-lfs filter-process"),
     ("filter.lfs.required", "true"),
+    # `repo sync` writes these skip variants into every project it manages, so
+    # refusing them refused every repo-managed tree with git-lfs installed -
+    # which is every tree this profile is meant to be applied to. The exemption
+    # is keyed on the WHOLE pair: "git-lfs smudge -- %f" without --skip stays
+    # allowed only as the canonical hydrating form above, and any other value
+    # under these keys is still rejected as an executable config.
+    ("filter.lfs.smudge", "git-lfs smudge --skip -- %f"),
+    ("filter.lfs.process", "git-lfs filter-process --skip"),
 )
 
 
