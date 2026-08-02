@@ -77,3 +77,24 @@ patches:
     apply_order: 10
     sha256: ec3d03250cbd733c27b4752986dae89188aa8bd09c71ec347db3d7e74d9e8f18
     rationale: Clear PRODUCT_NOT_DEBUGGABLE_IN_USERDEBUG after common product inherits so the fairlady userdebug build keeps ro.debuggable=1.
+
+  - name: libsensorbridge-dep-macan
+    target_repo: vendor/oneplus/macan
+    target_path: Android.bp
+    apply_order: 11
+    sha256: 0a02c5523eda8a84cc546a7a8c4972d68e17400c833d52a22fa7bda041dd40f7
+    rationale: libsensorbridge.so blobs exist only under vendor/oneplus/infiniti; macan has no such blob and its soong_namespace does not import the infiniti namespace. The auto-generated shared_libs dep is stale and causes Soong bootstrap to fail.
+
+  - name: libsensorbridge-dep-macanc
+    target_repo: vendor/oneplus/macanc
+    target_path: Android.bp
+    apply_order: 12
+    sha256: b1aeeae5fc472f3b7c0f94da40e10ad472bc2890a7319591b2c48839e48c04b5
+    rationale: Same as libsensorbridge-dep-macan for the macanc device.
+
+  - name: libsensorbridge-dep-fairlady
+    target_repo: vendor/oneplus/fairlady
+    target_path: Android.bp
+    apply_order: 13
+    sha256: 8636dc83ef0055fdbce02ceb3f2dc53374ff0f1f8e8db1d10feed06632e5a346
+    rationale: Same as libsensorbridge-dep-macan for the fairlady device.
