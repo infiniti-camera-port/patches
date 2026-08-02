@@ -35,6 +35,14 @@ CANONICAL_LFS_CONFIG: Final = (
     ("filter.lfs.smudge", "git-lfs smudge -- %f"),
     ("filter.lfs.process", "git-lfs filter-process"),
     ("filter.lfs.required", "true"),
+    # `repo sync` writes these skip variants into every project it manages, so
+    # refusing them refused every repo-managed tree with git-lfs installed -
+    # which is every tree this profile is meant to be applied to. The exemption
+    # is keyed on the WHOLE pair: "git-lfs smudge -- %f" without --skip stays
+    # allowed only as the canonical hydrating form above, and any other value
+    # under these keys is still rejected as an executable config.
+    ("filter.lfs.smudge", "git-lfs smudge --skip -- %f"),
+    ("filter.lfs.process", "git-lfs filter-process --skip"),
 )
 
 
@@ -131,7 +139,11 @@ def _validate_local_config(raw: str, kind: str, path: Path) -> None:
         if key in seen:
             raise RunnerError(issue=f"duplicate local Git config key in {kind} repository {path}: {key}")
         seen.add(key)
-        if kind == "prerequisite" and (key, value) in CANONICAL_LFS_CONFIG:
+        # Not restricted by `kind`: repo sync writes these filters into every
+        # project it manages, targets as much as prerequisites. What makes the
+        # exemption safe is the exact (key, value) match, not which repository
+        # it appears in.
+        if (key, value) in CANONICAL_LFS_CONFIG:
             continue
         if EXECUTABLE_CONFIG_PATTERN.match(key):
             raise RunnerError(issue=f"unsafe executable git config in {kind} repository {path}: {key}")

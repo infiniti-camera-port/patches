@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from support import OVERLAY_DIR, copy_overlay, create_repo_root, output_of, run_overlay
+from support import OVERLAY_DIR, copy_overlay, create_repo_root, output_of, run_overlay, manifest_patch_count
 
 sys.path.insert(0, str(OVERLAY_DIR))
 
@@ -124,7 +124,7 @@ class TransactionHardeningTests(unittest.TestCase):
         second = run_overlay(overlay, repo_root, apply=True)
         after_second = tuple(path.read_bytes() for path in repo_root.rglob("*") if path.is_file() and ".git" not in path.parts)
         self.assertEqual(second.returncode, 0, output_of(second))
-        self.assertEqual(output_of(second).count("ALREADY_APPLIED"), 7)
+        self.assertEqual(output_of(second).count("ALREADY_APPLIED"), manifest_patch_count())
         self.assertEqual(after_second, before_second)
 
 

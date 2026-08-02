@@ -1,0 +1,49 @@
+From f10a3c367bcd28a9b9951730288c696830894ba3 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Sun, 2 Aug 2026 16:25:51 +0000
+Subject: [PATCH] drop libsensorbridge from shared_libs: blob absent on macan
+
+Change-Id: I3d7013cf8e16c531563073d9983b8180fe72fdf4
+---
+ Android.bp | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/Android.bp b/Android.bp
+index 445bd2e..5e24203 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -7717,7 +7717,6 @@ cc_prebuilt_library_shared {
+                 "libopluscameraframeboost",
+                 "android.frameworks.sensorservice@1.0",
+                 "libsensorndkbridge",
+-                "libsensorbridge",
+                 "libhardware_legacy",
+                 "libz",
+                 "libdl",
+@@ -12197,7 +12196,6 @@ cc_prebuilt_library_shared {
+                 "vendor.oplus.hardware.cammidasservice-V1-ndk",
+                 "libmidasserviceintf_aidl",
+                 "android.frameworks.sensorservice@1.0",
+-                "libsensorbridge",
+                 "libbinder_ndk",
+                 "vendor.oplus.hardware.charger-V8-ndk",
+                 "liboutils",
+@@ -12248,7 +12246,6 @@ cc_prebuilt_library_shared {
+                 "vendor.oplus.hardware.cammidasservice-V1-ndk",
+                 "libmidasserviceintf_aidl",
+                 "android.frameworks.sensorservice@1.0",
+-                "libsensorbridge",
+                 "libbinder_ndk",
+                 "vendor.oplus.hardware.charger-V8-ndk",
+                 "liboutils",
+@@ -12297,7 +12294,6 @@ cc_prebuilt_library_shared {
+                 "vendor.oplus.hardware.cammidasservice-V1-ndk",
+                 "libmidasserviceintf_aidl",
+                 "android.frameworks.sensorservice@1.0",
+-                "libsensorbridge",
+                 "libbinder_ndk",
+                 "vendor.oplus.hardware.charger-V8-ndk",
+                 "liboutils",
+-- 
+2.43.0
+

@@ -116,6 +116,38 @@ class RunnerSecurityTest(unittest.TestCase):
         result = self.fixture.run()
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_target_accepts_the_skip_filters_repo_sync_writes(self) -> None:
+        self.fixture.write_metadata()
+        target = self.fixture.repo_root / self.first.target_repo
+        self.fixture._git(target, "config", "filter.lfs.smudge", "git-lfs smudge --skip -- %f")
+        self.fixture._git(target, "config", "filter.lfs.process", "git-lfs filter-process --skip")
+        result = self.fixture.run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_target_still_rejects_hostile_value_under_an_lfs_key(self) -> None:
+        self.fixture.write_metadata()
+        target = self.fixture.repo_root / self.first.target_repo
+        self.fixture._git(target, "config", "filter.lfs.smudge", "git-lfs smudge --skip -- %f ; touch /tmp/pwned")
+        result = self.fixture.run()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unsafe executable git config", result.stderr)
+
+    def test_sync_prerequisite_accepts_the_skip_filters_repo_sync_writes(self) -> None:
+        self.fixture.write_metadata()
+        prerequisite = self.fixture.repo_root / self.fixture.prerequisites[0][0]
+        self.fixture._git(prerequisite, "config", "filter.lfs.smudge", "git-lfs smudge --skip -- %f")
+        self.fixture._git(prerequisite, "config", "filter.lfs.process", "git-lfs filter-process --skip")
+        result = self.fixture.run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_sync_prerequisite_still_rejects_hydrating_smudge_without_skip(self) -> None:
+        self.fixture.write_metadata()
+        prerequisite = self.fixture.repo_root / self.fixture.prerequisites[0][0]
+        self.fixture._git(prerequisite, "config", "filter.lfs.smudge", "git-lfs smudge --skip -- %f ; touch /tmp/pwned")
+        result = self.fixture.run()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unsafe executable git config", result.stderr)
+
     def test_sync_prerequisite_rejects_noncanonical_lfs_command(self) -> None:
         self.fixture.write_metadata()
         prerequisite = self.fixture.repo_root / self.fixture.prerequisites[0][0]

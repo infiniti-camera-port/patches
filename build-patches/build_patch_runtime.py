@@ -19,6 +19,17 @@ EXECUTABLE_CONFIG_PATTERN: Final = re.compile(
     r"merge\..*\.driver|interactive\.diffFilter|pager\.)",
     re.IGNORECASE,
 )
+# `repo sync --no-git-lfs` writes exactly these into every project it manages,
+# so matching on the KEY alone refuses every repo-managed tree that has git-lfs
+# installed. The VALUE is what git executes, so the exemption is keyed on the
+# full pair: `filter.lfs.smudge = git-lfs smudge -- %f` (no --skip) still fails,
+# because that form hydrates instead of skipping.
+SAFE_LOCAL_CONFIG: Final = frozenset(
+    {
+        ("filter.lfs.smudge", "git-lfs smudge --skip -- %f"),
+        ("filter.lfs.process", "git-lfs filter-process --skip"),
+    }
+)
 
 
 class CommandResult(NamedTuple):
@@ -167,10 +178,10 @@ def _validate_local_config(raw: str, repo: Path) -> None:
     if records[-1]:
         raise GitConfigError(f"unsafe executable git config in repository {repo}: unterminated record")
     for record in records[:-1]:
-        key, separator, _value = record.partition("\n")
+        key, separator, value = record.partition("\n")
         if not key or not separator or any(ord(character) < 32 or ord(character) == 127 for character in key):
             raise GitConfigError(f"unsafe executable git config in repository {repo}: malformed record")
-        if EXECUTABLE_CONFIG_PATTERN.match(key):
+        if EXECUTABLE_CONFIG_PATTERN.match(key) and (key.lower(), value) not in SAFE_LOCAL_CONFIG:
             raise GitConfigError(f"unsafe executable git config in repository {repo}: {key}")
 
 

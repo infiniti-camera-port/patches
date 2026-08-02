@@ -30,16 +30,20 @@ def get_build_variant(product_config):
 """,
 }
 
-DEVICE_FILES = {
-    "lineage_infiniti.mk": """$(call inherit-product, device/oneplus/infiniti/device.mk)
+def device_files(device: str) -> dict[str, str]:
+    return {
+        f"lineage_{device}.mk": f"""$(call inherit-product, device/oneplus/{device}/device.mk)
 # Inherit some common Lineage stuff.
 $(call inherit-product, vendor/lineage/config/common_full_phone.mk)
 
-PRODUCT_NAME := lineage_infiniti
-PRODUCT_DEVICE := infiniti
+PRODUCT_NAME := lineage_{device}
+PRODUCT_DEVICE := {device}
 PRODUCT_MANUFACTURER := OnePlus
 """
-}
+    }
+
+
+DEVICE_FILES = device_files("infiniti")
 
 HIGHWAY_FILES = {
     "Android.bp": """package {
@@ -89,6 +93,35 @@ DNG_FILES = {
 }
 """
 }
+
+def vendor_camera_files() -> dict[str, str]:
+    # The libsensorbridge-dep-* patches delete one "libsensorbridge" line from
+    # four shared_libs blocks in the generated vendor Android.bp. git apply
+    # needs the exact hunk preimages (16-space indentation) to accept the
+    # patch, so the fixture mirrors those blocks verbatim.
+    tail_block = """                "vendor.oplus.hardware.cammidasservice-V1-ndk",
+                "libmidasserviceintf_aidl",
+                "android.frameworks.sensorservice@1.0",
+                "libsensorbridge",
+                "libbinder_ndk",
+                "vendor.oplus.hardware.charger-V8-ndk",
+                "liboutils",
+"""
+    blocks = [
+        """                "libopluscameraframeboost",
+                "android.frameworks.sensorservice@1.0",
+                "libsensorndkbridge",
+                "libsensorbridge",
+                "libhardware_legacy",
+                "libz",
+                "libdl",
+""",
+        tail_block,
+        tail_block,
+        tail_block,
+    ]
+    return {"Android.bp": "// camera-stack shared_libs fixture\n" + "\n".join(blocks)}
+
 
 SETTINGS_FILES = {
     "src/com/android/settings/dashboard/CategoryManager.java": """package com.android.settings.dashboard;
@@ -184,19 +217,45 @@ def initialize_repo(repo: Path, files: Mapping[str, str]) -> None:
 
 
 def create_repo_root(root: Path) -> Path:
-    soong = root / "build/soong"
-    device = root / "device/oneplus/infiniti"
-    highway = root / "external/google-highway"
-    skia = root / "external/skia"
-    dng = root / "external/dng_sdk"
-    settings = root / "packages/apps/Settings"
-    initialize_repo(soong, SOONG_FILES)
-    initialize_repo(device, DEVICE_FILES)
-    initialize_repo(highway, HIGHWAY_FILES)
-    initialize_repo(skia, SKIA_FILES)
-    initialize_repo(dng, DNG_FILES)
-    initialize_repo(settings, SETTINGS_FILES)
+    fixtures: dict[str, Mapping[str, str]] = {
+        "build/soong": SOONG_FILES,
+        "external/google-highway": HIGHWAY_FILES,
+        "external/skia": SKIA_FILES,
+        "external/dng_sdk": DNG_FILES,
+        "packages/apps/Settings": SETTINGS_FILES,
+    }
+    for device in ("infiniti", "macan", "macanc", "fairlady"):
+        fixtures[f"device/oneplus/{device}"] = device_files(device)
+    for device in ("macan", "macanc", "fairlady"):
+        fixtures[f"vendor/oneplus/{device}"] = vendor_camera_files()
+    for relative, files in fixtures.items():
+        initialize_repo(root / relative, files)
+    _assert_covers_manifest(fixtures)
     return root
+
+
+def manifest_patch_count() -> int:
+    sys.path.insert(0, str(OVERLAY_DIR))
+    try:
+        from build_patch_manifest import parse_manifest
+    finally:
+        sys.path.pop(0)
+    return len(parse_manifest(OVERLAY_DIR / "manifest.yml"))
+
+
+def _assert_covers_manifest(fixtures: Mapping[str, Mapping[str, str]]) -> None:
+    # The fixture set drifted behind manifest.yml once and every test in the
+    # suite failed at manifest validation before reaching its actual assertion,
+    # which reads as 18 unrelated failures. Fail loudly on the real cause.
+    sys.path.insert(0, str(OVERLAY_DIR))
+    try:
+        from build_patch_manifest import parse_manifest
+    finally:
+        sys.path.pop(0)
+    required = {entry.target_repo for entry in parse_manifest(OVERLAY_DIR / "manifest.yml")}
+    missing = sorted(required - set(fixtures))
+    if missing:
+        raise AssertionError(f"test fixtures do not cover manifest target repos: {missing}")
 
 
 def run_overlay(
