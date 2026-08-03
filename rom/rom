@@ -16,6 +16,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -82,6 +83,7 @@ def cmd_sync(args, lane, toolchain) -> int:
     default: it is documented as discarding local work, and a gate that quietly
     destroys a dirty overlay to make itself pass would be worse than no gate.
     """
+    started = time.monotonic()
     tree = lane.tree
     tree.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, GIT_LFS_SKIP_SMUDGE="1")
@@ -127,8 +129,12 @@ def cmd_sync(args, lane, toolchain) -> int:
             cwd=tree, env=env,
         )
     scope = ",".join(scoped) if scoped else "all"
+    # Duration is recorded because the mirror is only worth mounting if it beats
+    # syncing from the network, and "beats" needs a number to compare against.
+    elapsed = int(time.monotonic() - started)
     write_status(lane, "SYNCED" if done.returncode == 0 else "SYNC_FAILED",
-                 f"rc={done.returncode}", scope=scope)
+                 f"rc={done.returncode}", scope=scope, seconds=elapsed,
+                 mirror="yes" if builds.mirror_args(toolchain) else "no")
     return done.returncode
 
 
