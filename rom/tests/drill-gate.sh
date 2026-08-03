@@ -299,6 +299,67 @@ case "$classes" in
     *) bad "no EXPERIMENTAL class recorded (saw: $classes)" ;;
 esac
 
+# --- mirror and artifact homing degrade, never fail --------------------------
+python3 - "$SCRATCH" <<'PY'
+import json, sys
+s = sys.argv[1]
+c = json.load(open(f"{s}/lanes.json"))
+c["toolchain"]["mirror"] = f"{s}/no-such-mirror"
+json.dump(c, open(f"{s}/lanes.json", "w"), indent=2)
+PY
+# mirror_args is an init-time concern - `repo init --reference` - so a sync on
+# an already-initialised tree never reaches it. Exercising it through `rom sync`
+# therefore tested nothing and passed for it; call it directly instead.
+mkdir -p "$SCRATCH/present-mirror"
+mirror_probe() {
+    ROM_LANES="$SCRATCH/lanes.json" python3 - "$HERE/.." "$1" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import rom_lanes, rom_build
+_, tool = rom_lanes.load_lane("drill")
+tool["mirror"] = sys.argv[2]
+print("ARGS:" + " ".join(rom_build.mirror_args(tool)))
+PY
+}
+
+out="$(mirror_probe "$SCRATCH/no-such-mirror" 2>&1)"
+case "$out" in
+    *"no local mirror"*) ok "an absent mirror warns rather than failing" ;;
+    *)                   bad "no warning emitted for the absent mirror" ;;
+esac
+case "$out" in
+    *"ARGS:"*--reference*) bad "passed --reference for a mirror that is absent" ;;
+    *"ARGS:"*)             ok "  ...and passes no --reference" ;;
+esac
+
+out="$(mirror_probe "$SCRATCH/present-mirror" 2>&1)"
+case "$out" in
+    *"no local mirror"*) bad "warned about a mirror that is present" ;;
+    *)                   ok "a present mirror produces no warning" ;;
+esac
+case "$out" in
+    *--reference*present-mirror*) ok "  ...and is passed to repo init as --reference" ;;
+    *)                            bad "  ...but was not passed as --reference (got: $out)" ;;
+esac
+
+# Artifact homing: publish() must file under the id, and must not fail the
+# build when the destination is unwritable.
+mkdir -p "$SCRATCH/fakeout/target/product/dev"
+: > "$SCRATCH/fakeout/target/product/dev/boot.img"
+homed="$(ROM_LANES="$SCRATCH/lanes.json" python3 - "$SCRATCH" "$HERE/.." <<'PY'
+import sys
+sys.path.insert(0, sys.argv[2])
+import rom_lanes, rom_build
+lane, _ = rom_lanes.load_lane("drill")
+print(rom_build.publish(lane, "deadbeef" * 8,
+                        f"{sys.argv[1]}/fakeout/target/product/dev/boot.img"))
+PY
+)"
+case "$homed" in
+    *deadbeefdeadbeef*/boot.img) ok "a successful artefact is homed under its id" ;;
+    *)                           bad "artefact not homed under its id (got: $homed)" ;;
+esac
+
 echo
 echo "passed=$pass failed=$fail"
 [ "$fail" -eq 0 ]

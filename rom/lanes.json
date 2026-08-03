@@ -10,14 +10,16 @@
     "lane owns. Those projects, plus the build-patch overlay targets, are the set",
     "the identity is folded over; everything else in the tree is pinned by",
     "base_manifest.revision.",
-    "reconciliation.mode says how a lane reaches the published state. published-head: the tree syncs directly to the published commits, so HEAD must equal them. replayed-profile: the tree syncs to a base and replays the published patch series locally, which RE-AUTHORS every commit - so HEAD can never equal the published commit and comparing them reports a correct tree as broken. Those projects are judged on HEAD^{tree} against series.json head_tree_sha, which is exactly why series.json records both."
+    "reconciliation.mode says how a lane reaches the published state. published-head: the tree syncs directly to the published commits, so HEAD must equal them. replayed-profile: the tree syncs to a base and replays the published patch series locally, which RE-AUTHORS every commit - so HEAD can never equal the published commit and comparing them reports a correct tree as broken. Those projects are judged on HEAD^{tree} against series.json head_tree_sha, which is exactly why series.json records both.",
+    "mirror is an optional local reference for repo init. Both it and artifact publication degrade to a warning when absent, never a failure: the push-before-build discipline is already enforced far more strictly by the identity gate, which refuses any tree not at published state."
   ],
   "toolchain": {
     "image": "localhost/aosp-builder:noble",
     "containerfile": "/srv/android/tools/container/Containerfile",
     "ccache": "/home/vivy/.ccache",
     "overlay_manifest": "build-patches/manifest.yml",
-    "ledger": "rom/ledger"
+    "ledger": "rom/ledger",
+    "mirror": "/srv/android/mirror"
   },
   "lanes": {
     "crdroid": {

@@ -36,6 +36,45 @@ def artifact(out_dir: Path, goal: str) -> tuple[str, str]:
     return "-", "-"
 
 
+def publish(lane, build_id: str, source: str) -> str:
+    """Home a successful artefact under its id.
+
+    The id is the whole point of the path: an artefact filed under it can be
+    traced back to the exact trees that produced it, which a filename carrying
+    only a date cannot do. Two builds a minute apart from different trees would
+    otherwise be indistinguishable on disk.
+    """
+    if source == "-":
+        return "-"
+    origin = Path(source)
+    if not origin.is_file():
+        return "-"
+    destination = lane.artifacts / build_id / origin.name
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if not destination.exists():
+            destination.hardlink_to(origin)
+    except OSError as exc:
+        # Publication is convenience; the ledger row already names the artefact
+        # where the build left it. Failing the build over a destination we may
+        # not own would be a worse trade.
+        print(f"warning: could not publish under {destination}: {exc}")
+        return "-"
+    return str(destination)
+
+
+def mirror_args(toolchain) -> list[str]:
+    """`repo init --reference` against a local mirror, when one is mounted."""
+    declared = toolchain.get("mirror")
+    if not declared:
+        return []
+    mirror = Path(declared)
+    if not mirror.is_dir():
+        print(f"warning: no local mirror at {mirror}; syncing from the network")
+        return []
+    return ["--reference", str(mirror)]
+
+
 def ledger_paths(toolchain, repo_root) -> ledger.Paths:
     declared = Path(toolchain.get("ledger", "rom/ledger"))
     return ledger.Paths(declared if declared.is_absolute() else repo_root / declared)
