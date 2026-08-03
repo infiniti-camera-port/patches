@@ -1,0 +1,67 @@
+{
+  "$comment": [
+    "Lane declarations. A lane is the whole difference between one build target",
+    "and another, expressed as data so that adding a third lane is a row here",
+    "rather than a new script. run-build.sh and run-build-1vivy.sh differed only",
+    "in tree and status file, and choosing wrongly between them was itself a",
+    "staleness vector.",
+    "",
+    "governed_manifest is the local manifest that declares which projects this",
+    "lane owns. Those projects, plus the build-patch overlay targets, are the set",
+    "the identity is folded over; everything else in the tree is pinned by",
+    "base_manifest.revision.",
+    "reconciliation.mode says how a lane reaches the published state. published-head: the tree syncs directly to the published commits, so HEAD must equal them. replayed-profile: the tree syncs to a base and replays the published patch series locally, which RE-AUTHORS every commit - so HEAD can never equal the published commit and comparing them reports a correct tree as broken. Those projects are judged on HEAD^{tree} against series.json head_tree_sha, which is exactly why series.json records both."
+  ],
+  "toolchain": {
+    "image": "localhost/aosp-builder:noble",
+    "containerfile": "/srv/android/tools/container/Containerfile",
+    "ccache": "/home/vivy/.ccache",
+    "overlay_manifest": "build-patches/manifest.yml",
+    "ledger": "rom/ledger"
+  },
+  "lanes": {
+    "crdroid": {
+      "description": "the promoted infiniti-camera-port graph",
+      "tree": "/srv/android/cleanroom",
+      "base_manifest": {
+        "url": "https://github.com/crdroidandroid/android.git",
+        "revision": "16.0"
+      },
+      "governed_manifest": {
+        "url": "https://github.com/infiniti-camera-port/local_manifest.git",
+        "revision": "main",
+        "path": "local_manifests/infiniti-camera.xml",
+        "install_as": "infiniti-camera.xml"
+      },
+      "governed_org": "infiniti-camera-port",
+      "lunch": "lineage_infiniti-bp4a-userdebug",
+      "status_file": "/srv/android/logs/STATUS",
+      "artifacts": "/srv/android/artifacts/crdroid",
+      "reconciliation": {
+        "mode": "published-head"
+      }
+    },
+    "1vivy": {
+      "description": "the 1vivy consumer tree, synced from published repos only",
+      "tree": "/srv/android/cleanroom-1vivy",
+      "base_manifest": {
+        "url": "https://github.com/crdroidandroid/android.git",
+        "revision": "aac17d7a4a7b1e09f5ca5cb0f517ac0d73cfac91"
+      },
+      "governed_manifest": {
+        "url": "https://github.com/1vivy/1vivy-rom_local_manifest.git",
+        "revision": "main",
+        "path": "local_manifests/1vivy-rom.xml",
+        "install_as": "1vivy-rom.xml"
+      },
+      "governed_org": "infiniti-camera-port",
+      "lunch": "lineage_infiniti-bp4a-userdebug",
+      "status_file": "/srv/android/logs/STATUS-1VIVY-BUILD",
+      "artifacts": "/srv/android/artifacts/1vivy",
+      "reconciliation": {
+        "mode": "replayed-profile",
+        "series": "/srv/android/tools/patches-1vivy/patch/series.json"
+      }
+    }
+  }
+}
