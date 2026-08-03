@@ -1,0 +1,269 @@
+#!/usr/bin/env python3
+"""rom - the single entry point for syncing and building a ROM lane.
+
+Builds start here or not at all. run-build.sh and run-build-1vivy.sh differed
+only in tree and status file, so choosing wrongly between them was itself a way
+to build the wrong thing; a single entry with lanes as data removes the choice.
+
+A build cannot start against a tree that is not what the published world says.
+That is not advice, it is the exit status.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import signal
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import rom_gate as gate  # noqa: E402
+import rom_ledger as ledger  # noqa: E402
+import rom_build as builds  # noqa: E402
+import rom_lanes as lanes  # noqa: E402
+from rom_identity import IdentityError, OfflineError  # noqa: E402
+from rom_lanes import LaneError  # noqa: E402
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+
+def _stamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def write_status(lane: lanes.Lane, state: str, detail: str, **extra) -> None:
+    lane.status_file.parent.mkdir(parents=True, exist_ok=True)
+    fields = " ".join(f"{k}={v}" for k, v in extra.items())
+    lane.status_file.write_text(
+        f"state={state} lane={lane.name} target={lane.lunch} "
+        f"{fields} detail={detail} updated={ledger.utc_now()}\n"
+    )
+
+
+def cmd_ledger(args, lane, toolchain) -> int:
+    rows = [r for r in ledger.read_rows(builds.ledger_paths(toolchain, REPO_ROOT)) if r["lane"] == lane.name]
+    if not rows:
+        print(f"no attempts recorded for lane {lane.name}")
+        return 0
+    for row in rows[-args.limit:]:
+        print(f"{row['utc']}  {row['outcome']:<8} {row['class']:<12} "
+              f"{row['goal']:<12} {row['id'][:16]}  {row['artifact_dest']}")
+    return 0
+
+
+def cmd_reconstruct(args, lane, toolchain) -> int:
+    """Fold a stored preimage back into its id, with no tree and no network."""
+    ok, detail = ledger.reconstruct(builds.ledger_paths(toolchain, REPO_ROOT), args.id)
+    print(detail)
+    return 0 if ok else 1
+
+
+def evaluate(lane, toolchain, require_expected=True):
+    projects = lanes.fold_set(lane, toolchain)
+    return gate.evaluate(lane, toolchain, projects, REPO_ROOT, require_expected)
+
+
+def cmd_status(args, lane, toolchain) -> int:
+    verdict = evaluate(lane, toolchain, require_expected=False)
+    print(gate.render(verdict, lane))
+    return 0 if verdict.state != gate.REFUSED else 1
+
+
+def cmd_sync(args, lane, toolchain) -> int:
+    """Scoped sync: only the named projects move.
+
+    `repo sync <project>...` leaves every project not named alone, which is what
+    makes a targeted sync safe. --force-sync is deliberately NOT passed by
+    default: it is documented as discarding local work, and a gate that quietly
+    destroys a dirty overlay to make itself pass would be worse than no gate.
+    """
+    tree = lane.tree
+    tree.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ, GIT_LFS_SKIP_SMUDGE="1")
+
+    if not (tree / ".repo").is_dir():
+        init = subprocess.run(
+            ["repo", "init", "-u", lane.base_manifest["url"],
+             "-b", lane.base_manifest["revision"], "--no-clone-bundle"],
+            cwd=tree, env=env,
+        )
+        if init.returncode != 0:
+            return init.returncode
+
+    scoped = list(args.projects)
+
+    # The manifest is refreshed only on a WHOLE-tree sync. Pulling a new
+    # manifest while syncing a single project would re-pin projects that are
+    # then never moved to match it, leaving the tree inconsistent with its own
+    # declaration - a scoped sync must touch only what it was asked to touch.
+    if not scoped:
+        local = tree / ".repo" / "local_manifests"
+        local.mkdir(parents=True, exist_ok=True)
+        manifest = lane.governed_manifest
+        raw = manifest["url"].removesuffix(".git").replace(
+            "github.com", "raw.githubusercontent.com"
+        )
+        fetched = subprocess.run(
+            ["curl", "-fsSL",
+             f"{raw}/{manifest['revision']}/{manifest['path']}",
+             "-o", str(local / manifest["install_as"])],
+            env=env,
+        )
+        if fetched.returncode != 0:
+            print("could not fetch the governed manifest", file=sys.stderr)
+            return fetched.returncode
+    cmd = ["repo", "sync", "-c", "--no-clone-bundle", "-j8", *scoped]
+    done = subprocess.run(cmd, cwd=tree, env=env)
+    if done.returncode != 0 and not scoped:
+        print("=== sweep incomplete, final fail-fast pass ===")
+        done = subprocess.run(
+            ["repo", "sync", "-c", "--no-clone-bundle", "-j4", "--fail-fast"],
+            cwd=tree, env=env,
+        )
+    scope = ",".join(scoped) if scoped else "all"
+    write_status(lane, "SYNCED" if done.returncode == 0 else "SYNC_FAILED",
+                 f"rc={done.returncode}", scope=scope)
+    return done.returncode
+
+
+def cmd_build(args, lane, toolchain) -> int:
+    try:
+        verdict = evaluate(lane, toolchain, require_expected=True)
+    except OfflineError as exc:
+        print(f"refusing to build: cannot reach the published world ({exc})",
+              file=sys.stderr)
+        write_status(lane, gate.REFUSED, "expected-id-unavailable")
+        return 3
+
+    print(gate.render(verdict, lane))
+    print()
+
+    if verdict.state == gate.REFUSED:
+        if args.override != verdict.actual_id:
+            print(
+                "REFUSED: a governed project is not at its published revision.\n"
+                "Reconcile with `rom %s sync`, do not override.\n"
+                "If you truly mean to build this tree anyway, pass the ACTUAL id:\n"
+                "    rom %s build --override %s"
+                % (lane.name, lane.name, verdict.actual_id),
+                file=sys.stderr,
+            )
+            write_status(lane, gate.REFUSED, "governed-drift",
+                         id=verdict.actual_id,
+                         projects=",".join(d.path for d in verdict.drift))
+            builds.record(builds.ledger_paths(toolchain, REPO_ROOT), lane, verdict, args.goal, "REFUSED",
+                    first_error=",".join(d.path for d in verdict.drift))
+            return 2
+        print(f"override accepted for actual id {verdict.actual_id}")
+
+    build_class = gate.EXPERIMENTAL if verdict.state != gate.PINNED else gate.PINNED
+    stamp = _stamp()
+    out_dir = Path(args.out) if args.out else None
+    if out_dir:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    observed_out = out_dir or (lane.tree / "out")
+    log = lane.status_file.parent / f"{lane.name}-build-{stamp}.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+
+    write_status(lane, "RUNNING", f"goal={args.goal}", id=verdict.actual_id,
+                 cls=build_class, log=log)
+
+    # run-build.sh trapped INT/TERM so a killed build could not leave its status
+    # pinned on RUNNING forever - a monitor reporting healthy while the build is
+    # dead. Retiring that wrapper without carrying the trap across reintroduced
+    # exactly that: a bootimage build completed successfully while its verdict
+    # and its ledger row were both lost with the parent process.
+    def _interrupted(signum, _frame):
+        write_status(lane, "INTERRUPTED", f"signal={signum} goal={args.goal}",
+                     id=verdict.actual_id, cls=build_class, log=log)
+        builds.record(builds.ledger_paths(toolchain, REPO_ROOT), lane, verdict,
+                      args.goal, "INTERRUPTED", cls=build_class,
+                      first_error=f"signal {signum}")
+        os._exit(130)
+
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, _interrupted)
+
+    argv = builds.podman_argv(lane, toolchain, out_dir, args.goal)
+    try:
+        with log.open("wb") as fh:
+            done = subprocess.run(argv, stdout=fh, stderr=subprocess.STDOUT)
+    except FileNotFoundError as exc:
+        # An attempt that dies before it starts is still an attempt. Letting
+        # this escape would leave the ledger with a gap exactly where something
+        # went wrong, which is the opposite of what an append-only record is for.
+        detail = f"container runtime unavailable: {exc.filename}"
+        write_status(lane, "FAILED", detail, id=verdict.actual_id, cls=build_class)
+        builds.record(builds.ledger_paths(toolchain, REPO_ROOT), lane, verdict, args.goal, "FAILED",
+                cls=build_class, first_error=detail)
+        print(detail, file=sys.stderr)
+        return 4
+
+    root_owned = subprocess.run(
+        ["find", str(observed_out), "-user", "root"], capture_output=True, text=True
+    )
+    strays = len([x for x in root_owned.stdout.splitlines() if x])
+
+    if done.returncode == 0:
+        write_status(lane, "SUCCESS", f"rc=0 goal={args.goal}",
+                     id=verdict.actual_id, cls=build_class, log=log,
+                     root_owned=strays)
+        art, digest = builds.artifact(observed_out, args.goal)
+        builds.record(builds.ledger_paths(toolchain, REPO_ROOT), lane, verdict, args.goal, "SUCCESS", cls=build_class,
+                artifact_sha256=digest, artifact_dest=art)
+    else:
+        first = builds.first_error(log)
+        write_status(lane, "FAILED", f"rc={done.returncode} goal={args.goal}",
+                     id=verdict.actual_id, cls=build_class, log=log,
+                     root_owned=strays)
+        builds.record(builds.ledger_paths(toolchain, REPO_ROOT), lane, verdict, args.goal, "FAILED", cls=build_class,
+                first_error=first)
+    print(f"build finished rc={done.returncode} log={log}")
+    return done.returncode
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="rom")
+    parser.add_argument("lane")
+    sub = parser.add_subparsers(dest="action", required=True)
+
+    sub.add_parser("status")
+
+    p_sync = sub.add_parser("sync")
+    p_sync.add_argument("projects", nargs="*")
+
+    p_build = sub.add_parser("build")
+    p_build.add_argument("goal", nargs="?", default="bacon")
+    p_build.add_argument("--override", default=None,
+                         help="the ACTUAL id, as printed by `rom <lane> status`")
+    p_build.add_argument("--out", default=None)
+
+    p_ledger = sub.add_parser("ledger")
+    p_ledger.add_argument("--limit", type=int, default=20)
+
+    p_recon = sub.add_parser("reconstruct")
+    p_recon.add_argument("id")
+
+    args = parser.parse_args()
+    try:
+        lane, toolchain = lanes.load_lane(args.lane)
+    except LaneError as exc:
+        print(exc, file=sys.stderr)
+        return 64
+
+    handler = {"status": cmd_status, "sync": cmd_sync, "build": cmd_build,
+               "ledger": cmd_ledger, "reconstruct": cmd_reconstruct}[args.action]
+    try:
+        return handler(args, lane, toolchain)
+    except (LaneError, IdentityError) as exc:
+        print(exc, file=sys.stderr)
+        return 65
+
+
+if __name__ == "__main__":
+    sys.exit(main())
