@@ -89,7 +89,8 @@ def cmd_sync(args, lane, toolchain) -> int:
     if not (tree / ".repo").is_dir():
         init = subprocess.run(
             ["repo", "init", "-u", lane.base_manifest["url"],
-             "-b", lane.base_manifest["revision"], "--no-clone-bundle"],
+             "-b", lane.base_manifest["revision"], "--no-clone-bundle",
+             *builds.mirror_args(toolchain)],
             cwd=tree, env=env,
         )
         if init.returncode != 0:
@@ -214,6 +215,7 @@ def cmd_build(args, lane, toolchain) -> int:
                      id=verdict.actual_id, cls=build_class, log=log,
                      root_owned=strays)
         art, digest = builds.artifact(observed_out, args.goal)
+        art = builds.publish(lane, verdict.actual_id, art)
         builds.record(builds.ledger_paths(toolchain, REPO_ROOT), lane, verdict, args.goal, "SUCCESS", cls=build_class,
                 artifact_sha256=digest, artifact_dest=art)
     else:
