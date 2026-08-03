@@ -360,6 +360,41 @@ case "$homed" in
     *)                           bad "artefact not homed under its id (got: $homed)" ;;
 esac
 
+# --- LFS pointer stubs are visible even though the identity cannot see them ---
+lfs_probe() {
+    ROM_LANES="$SCRATCH/lanes.json" python3 - "$HERE/.." "$SCRATCH/build" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+from pathlib import Path
+import rom_lfs
+tree = Path(sys.argv[2])
+found = rom_lfs.stubs(tree)
+print("STUBS:%d" % len(found))
+for f in found:
+    print("OWNER:%s:%s" % (f, rom_lfs.owning_repo(tree, f)))
+PY
+}
+
+check "a clean tree reports no stubs" "STUBS:0" "$(lfs_probe | head -1)"
+
+printf 'version https://git-lfs.github.com/spec/v1\noid sha256:%064d\nsize 1234\n' 0 \
+    > "$SCRATCH/build/governed_a/blob.bin"
+out="$(lfs_probe)"
+check "a pointer stub is detected" "STUBS:1" "$(echo "$out" | head -1)"
+case "$out" in
+    *"OWNER:governed_a/blob.bin:governed_a"*) ok "  ...and is attributed to its owning repository" ;;
+    *) bad "  ...but was not attributed correctly ($out)" ;;
+esac
+
+rm -f "$SCRATCH/build/governed_a/blob.bin"
+check "removing the stub clears the count" "STUBS:0" "$(lfs_probe | head -1)"
+
+# A file that is small but NOT a pointer must not be counted - the sweep is
+# size-bounded for speed, so size alone must never be the test.
+printf 'tiny but not a pointer\n' > "$SCRATCH/build/governed_a/small.txt"
+check "a small non-pointer file is not counted as a stub" "STUBS:0" "$(lfs_probe | head -1)"
+rm -f "$SCRATCH/build/governed_a/small.txt"
+
 echo
 echo "passed=$pass failed=$fail"
 [ "$fail" -eq 0 ]

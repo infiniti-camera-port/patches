@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import rom_gate as gate  # noqa: E402
 import rom_ledger as ledger  # noqa: E402
 import rom_build as builds  # noqa: E402
+import rom_lfs as lfs  # noqa: E402
 import rom_lanes as lanes  # noqa: E402
 from rom_identity import IdentityError, OfflineError  # noqa: E402
 from rom_lanes import LaneError  # noqa: E402
@@ -72,6 +73,16 @@ def evaluate(lane, toolchain, require_expected=True):
 def cmd_status(args, lane, toolchain) -> int:
     verdict = evaluate(lane, toolchain, require_expected=False)
     print(gate.render(verdict, lane))
+    if not args.no_lfs_check:
+        remaining = lfs.stubs(lane.tree)
+        print()
+        print(f"lfs stubs   {len(remaining)}")
+        if remaining:
+            print("            the identity above cannot see these: a pointer and its")
+            print("            content are the same git blob. Run `rom %s sync` to hydrate."
+                  % lane.name)
+            for path in remaining[:5]:
+                print(f"              {path}")
     return 0 if verdict.state != gate.REFUSED else 1
 
 
@@ -86,13 +97,21 @@ def cmd_sync(args, lane, toolchain) -> int:
     started = time.monotonic()
     tree = lane.tree
     tree.mkdir(parents=True, exist_ok=True)
-    env = dict(os.environ, GIT_LFS_SKIP_SMUDGE="1")
+    env = os.environ
 
     if not (tree / ".repo").is_dir():
+        # --no-git-lfs, not GIT_LFS_SKIP_SMUDGE. repo decides LFS from
+        # repo.git-lfs and writes the `git-lfs smudge --skip` filters itself when
+        # it is off, so the env var only ever restated a decision repo had
+        # already made. Stated explicitly rather than left to default: smudge
+        # must stay off during sync because AOSP mirrors carry LFS pointers whose
+        # objects live upstream, and android.googlesource.com serves no LFS
+        # backend at all - with filter.lfs.required=true that is fatal, not a
+        # passthrough. Hydration happens afterwards, per repo, in hydrate().
         init = subprocess.run(
             ["repo", "init", "-u", lane.base_manifest["url"],
              "-b", lane.base_manifest["revision"], "--no-clone-bundle",
-             *builds.mirror_args(toolchain)],
+             "--no-git-lfs", *builds.mirror_args(toolchain)],
             cwd=tree, env=env,
         )
         if init.returncode != 0:
@@ -128,13 +147,19 @@ def cmd_sync(args, lane, toolchain) -> int:
             ["repo", "sync", "-c", "--no-clone-bundle", "-j4", "--fail-fast"],
             cwd=tree, env=env,
         )
+    hydration = None
+    if done.returncode == 0:
+        print("=== hydrating LFS ===")
+        hydration = lfs.hydrate(tree)
+
     scope = ",".join(scoped) if scoped else "all"
     # Duration is recorded because the mirror is only worth mounting if it beats
     # syncing from the network, and "beats" needs a number to compare against.
     elapsed = int(time.monotonic() - started)
     write_status(lane, "SYNCED" if done.returncode == 0 else "SYNC_FAILED",
                  f"rc={done.returncode}", scope=scope, seconds=elapsed,
-                 mirror="yes" if builds.mirror_args(toolchain) else "no")
+                 mirror="yes" if builds.mirror_args(toolchain) else "no",
+                 stubs=len(hydration.residual) if hydration else "-")
     return done.returncode
 
 
@@ -240,7 +265,9 @@ def main() -> int:
     parser.add_argument("lane")
     sub = parser.add_subparsers(dest="action", required=True)
 
-    sub.add_parser("status")
+    p_status = sub.add_parser("status")
+    p_status.add_argument("--no-lfs-check", action="store_true",
+                          help="skip the pointer-stub sweep, which walks the tree")
 
     p_sync = sub.add_parser("sync")
     p_sync.add_argument("projects", nargs="*")
