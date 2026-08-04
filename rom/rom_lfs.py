@@ -24,6 +24,39 @@ SWEEP = (
 )
 
 
+# Keyed on oid, not path: the oid IS the content, so an allowlisted entry cannot
+# silently come to mean a different file. A path could be reused; a hash cannot.
+KNOWN_UNHYDRATABLE = {
+    "faa09385f32d8b3e4518c14384b52ef94f6430da5a838307a2e0af2940b89608": (
+        "android_bp test fixture (external/rust/android-crates-io). AOSP committed "
+        "the pointer but ships no .gitattributes for it and serves no LFS backend, "
+        "so git-lfs does not even recognise the file as LFS - nothing can hydrate "
+        "it in-tree. Test-only: the generated Android.bp declares rust_library and "
+        "no rust_test, so a ROM build never reads it. Known upstream import bug, "
+        "AOSP issue 476172414. The real 1803816-byte blob is available from the "
+        "genuine upstream, tardyp/rs-bp, if the crate's tests are ever needed."
+    ),
+}
+
+
+def oid_of(tree: Path, relative: str) -> str | None:
+    try:
+        for line in (tree / relative).read_text(errors="replace").splitlines():
+            if line.startswith("oid sha256:"):
+                return line.split("sha256:", 1)[1].strip()
+    except OSError:
+        return None
+    return None
+
+
+def split_known(tree: Path, paths: list[str]) -> tuple[list[str], list[str]]:
+    """Separate stubs worth acting on from ones documented as unhydratable."""
+    actionable, known = [], []
+    for path in paths:
+        (known if oid_of(tree, path) in KNOWN_UNHYDRATABLE else actionable).append(path)
+    return actionable, known
+
+
 @dataclass
 class Hydration:
     before: list[str] = field(default_factory=list)
