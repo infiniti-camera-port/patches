@@ -74,14 +74,15 @@ def cmd_status(args, lane, toolchain) -> int:
     verdict = evaluate(lane, toolchain, require_expected=False)
     print(gate.render(verdict, lane))
     if not args.no_lfs_check:
-        remaining = lfs.stubs(lane.tree)
+        actionable, known = lfs.split_known(lane.tree, lfs.stubs(lane.tree))
         print()
-        print(f"lfs stubs   {len(remaining)}")
-        if remaining:
+        print(f"lfs stubs   {len(actionable)}"
+              + (f" ({len(known)} known-unhydratable, ignored)" if known else ""))
+        if actionable:
             print("            the identity above cannot see these: a pointer and its")
             print("            content are the same git blob. Run `rom %s sync` to hydrate."
                   % lane.name)
-            for path in remaining[:5]:
+            for path in actionable[:5]:
                 print(f"              {path}")
     return 0 if verdict.state != gate.REFUSED else 1
 

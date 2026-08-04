@@ -395,6 +395,35 @@ printf 'tiny but not a pointer\n' > "$SCRATCH/build/governed_a/small.txt"
 check "a small non-pointer file is not counted as a stub" "STUBS:0" "$(lfs_probe | head -1)"
 rm -f "$SCRATCH/build/governed_a/small.txt"
 
+# A documented-unhydratable stub must be separated out, not counted as work.
+printf 'version https://git-lfs.github.com/spec/v1\noid sha256:faa09385f32d8b3e4518c14384b52ef94f6430da5a838307a2e0af2940b89608\nsize 1803816\n' \
+    > "$SCRATCH/build/governed_a/known.bin"
+split="$(ROM_LANES="$SCRATCH/lanes.json" python3 - "$HERE/.." "$SCRATCH/build" <<'PYEOF'
+import sys
+sys.path.insert(0, sys.argv[1])
+from pathlib import Path
+import rom_lfs
+tree = Path(sys.argv[2])
+a, k = rom_lfs.split_known(tree, rom_lfs.stubs(tree))
+print("ACTIONABLE:%d KNOWN:%d" % (len(a), len(k)))
+PYEOF
+)"
+check "a known-unhydratable oid is not counted as actionable" "ACTIONABLE:0 KNOWN:1" "$split"
+printf 'version https://git-lfs.github.com/spec/v1\noid sha256:%064d\nsize 5\n' 7 \
+    > "$SCRATCH/build/governed_a/other.bin"
+split="$(ROM_LANES="$SCRATCH/lanes.json" python3 - "$HERE/.." "$SCRATCH/build" <<'PYEOF'
+import sys
+sys.path.insert(0, sys.argv[1])
+from pathlib import Path
+import rom_lfs
+tree = Path(sys.argv[2])
+a, k = rom_lfs.split_known(tree, rom_lfs.stubs(tree))
+print("ACTIONABLE:%d KNOWN:%d" % (len(a), len(k)))
+PYEOF
+)"
+check "  ...while an unknown oid still is" "ACTIONABLE:1 KNOWN:1" "$split"
+rm -f "$SCRATCH/build/governed_a/known.bin" "$SCRATCH/build/governed_a/other.bin"
+
 echo
 echo "passed=$pass failed=$fail"
 [ "$fail" -eq 0 ]
