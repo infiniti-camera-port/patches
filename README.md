@@ -61,8 +61,8 @@ proprietary output. They are direct sync inputs, never portable patch series.
 | `vendor/oneplus/camera-infiniti` | `vendor_oneplus_camera-infiniti` | `16.0` | `e57bdeb1ae75c7aa1c2a0577f4a1d14d152a3fa4` |
 | `proprietary/vendor/oneplus/camera-sm8850-common` | `proprietary_vendor_oneplus_camera-sm8850-common` | `16.0` | `c9b0760407740e8853bbf660bddc3d407efe09d3` |
 | `proprietary/vendor/oneplus/camera-infiniti` | `proprietary_vendor_oneplus_camera-infiniti` | `16.0` | `31aa2b78ec6b2cee85d446db176e39441c45c7ba` |
-| `vendor/oneplus/sm8850-common` | `proprietary_vendor_oneplus_sm8850-common` | `16.0` | `65ffb500cea039fee1f388805a2a7fe3571d8b0c` |
-| `vendor/oneplus/infiniti` | `proprietary_vendor_oneplus_infiniti` | `16.0` | `1088edf652044b1bfff1a5d1e795c6424d95aeba` |
+| `vendor/oneplus/sm8850-common` | `proprietary_vendor_oneplus_sm8850-common` | `16.0` | `d072e8b9ee1524332e4da747f9bb47301497682b` |
+| `vendor/oneplus/infiniti` | `proprietary_vendor_oneplus_infiniti` | `16.0` | `5a9ed0409d390e3b00d08b6c8596220681038084` |
 
 The following is a copy-ready local-manifest core. If the target manifest
 already owns one of these paths, remove its existing project by its exact
