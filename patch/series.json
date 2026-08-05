@@ -5,7 +5,7 @@
     {
       "repo": "infiniti-camera-port/vendor_oneplus_camera-sm8850-common",
       "build_path": "vendor/oneplus/camera-sm8850-common",
-      "ref": "16.0-infiniti",
+      "ref": "16.0",
       "sha": "41fd10618f0437e2e57c985b73e42daf3b2b080d"
     },
     {
@@ -17,7 +17,7 @@
     {
       "repo": "infiniti-camera-port/proprietary_vendor_oneplus_camera-sm8850-common",
       "build_path": "proprietary/vendor/oneplus/camera-sm8850-common",
-      "ref": "16.0-infiniti",
+      "ref": "16.0",
       "sha": "c9b0760407740e8853bbf660bddc3d407efe09d3"
     },
     {
@@ -29,7 +29,7 @@
     {
       "repo": "infiniti-camera-port/proprietary_vendor_oneplus_sm8850-common",
       "build_path": "vendor/oneplus/sm8850-common",
-      "ref": "16.0-infiniti",
+      "ref": "16.0",
       "sha": "65ffb500cea039fee1f388805a2a7fe3571d8b0c"
     },
     {

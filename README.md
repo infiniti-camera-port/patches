@@ -57,11 +57,11 @@ proprietary output. They are direct sync inputs, never portable patch series.
 
 | build path | repository | ref | required SHA |
 | --- | --- | --- | --- |
-| `vendor/oneplus/camera-sm8850-common` | `vendor_oneplus_camera-sm8850-common` | `16.0-infiniti` | `41fd10618f0437e2e57c985b73e42daf3b2b080d` |
+| `vendor/oneplus/camera-sm8850-common` | `vendor_oneplus_camera-sm8850-common` | `16.0` | `41fd10618f0437e2e57c985b73e42daf3b2b080d` |
 | `vendor/oneplus/camera-infiniti` | `vendor_oneplus_camera-infiniti` | `16.0` | `e57bdeb1ae75c7aa1c2a0577f4a1d14d152a3fa4` |
-| `proprietary/vendor/oneplus/camera-sm8850-common` | `proprietary_vendor_oneplus_camera-sm8850-common` | `16.0-infiniti` | `c9b0760407740e8853bbf660bddc3d407efe09d3` |
+| `proprietary/vendor/oneplus/camera-sm8850-common` | `proprietary_vendor_oneplus_camera-sm8850-common` | `16.0` | `c9b0760407740e8853bbf660bddc3d407efe09d3` |
 | `proprietary/vendor/oneplus/camera-infiniti` | `proprietary_vendor_oneplus_camera-infiniti` | `16.0` | `31aa2b78ec6b2cee85d446db176e39441c45c7ba` |
-| `vendor/oneplus/sm8850-common` | `proprietary_vendor_oneplus_sm8850-common` | `16.0-infiniti` | `65ffb500cea039fee1f388805a2a7fe3571d8b0c` |
+| `vendor/oneplus/sm8850-common` | `proprietary_vendor_oneplus_sm8850-common` | `16.0` | `65ffb500cea039fee1f388805a2a7fe3571d8b0c` |
 | `vendor/oneplus/infiniti` | `proprietary_vendor_oneplus_infiniti` | `16.0` | `1088edf652044b1bfff1a5d1e795c6424d95aeba` |
 
 The following is a copy-ready local-manifest core. If the target manifest
@@ -73,11 +73,11 @@ collision workaround.
 <?xml version="1.0" encoding="UTF-8"?>
 <manifest>
   <remote name="github-infiniti-camera-port" fetch="https://github.com/" />
-  <project path="vendor/oneplus/camera-sm8850-common" name="infiniti-camera-port/vendor_oneplus_camera-sm8850-common" remote="github-infiniti-camera-port" revision="16.0-infiniti" />
+  <project path="vendor/oneplus/camera-sm8850-common" name="infiniti-camera-port/vendor_oneplus_camera-sm8850-common" remote="github-infiniti-camera-port" revision="16.0" />
   <project path="vendor/oneplus/camera-infiniti" name="infiniti-camera-port/vendor_oneplus_camera-infiniti" remote="github-infiniti-camera-port" revision="16.0" />
-  <project path="proprietary/vendor/oneplus/camera-sm8850-common" name="infiniti-camera-port/proprietary_vendor_oneplus_camera-sm8850-common" remote="github-infiniti-camera-port" revision="16.0-infiniti" />
+  <project path="proprietary/vendor/oneplus/camera-sm8850-common" name="infiniti-camera-port/proprietary_vendor_oneplus_camera-sm8850-common" remote="github-infiniti-camera-port" revision="16.0" />
   <project path="proprietary/vendor/oneplus/camera-infiniti" name="infiniti-camera-port/proprietary_vendor_oneplus_camera-infiniti" remote="github-infiniti-camera-port" revision="16.0" />
-  <project path="vendor/oneplus/sm8850-common" name="infiniti-camera-port/proprietary_vendor_oneplus_sm8850-common" remote="github-infiniti-camera-port" revision="16.0-infiniti" />
+  <project path="vendor/oneplus/sm8850-common" name="infiniti-camera-port/proprietary_vendor_oneplus_sm8850-common" remote="github-infiniti-camera-port" revision="16.0" />
   <project path="vendor/oneplus/infiniti" name="infiniti-camera-port/proprietary_vendor_oneplus_infiniti" remote="github-infiniti-camera-port" revision="16.0" />
 </manifest>
 ```
