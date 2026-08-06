@@ -10,22 +10,15 @@ import rom_gate as gate
 import rom_ledger as ledger
 
 
-def first_error(log: Path) -> str:
-    if not log.is_file():
-        return "-"
-    with log.open(errors="replace") as fh:
-        for line in fh:
-            if line.startswith(("FAILED:", "ninja: error", "error:")):
-                return line.strip()[:200]
-    return "-"
-
-
-def artifact(out_dir: Path, goal: str) -> tuple[str, str]:
+def artifact(out_dir: Path, goal: str, not_before_ns: int = 0) -> tuple[str, str]:
     """The thing this goal produced, hashed so a row names a specific artefact."""
     product = out_dir / "target" / "product"
     patterns = ["*.zip"] if goal in ("bacon", "otapackage") else [f"{goal}.img", "*.img"]
     for pattern in patterns:
-        found = sorted(product.glob(f"*/{pattern}"), key=lambda p: p.stat().st_mtime)
+        found = sorted(
+            (path for path in product.glob(f"*/{pattern}") if path.stat().st_mtime_ns >= not_before_ns),
+            key=lambda path: path.stat().st_mtime_ns,
+        )
         if found:
             newest = found[-1]
             digest = hashlib.sha256()
@@ -82,13 +75,17 @@ def ledger_paths(toolchain, repo_root) -> ledger.Paths:
 
 def record(paths, lane, verdict, goal: str, outcome: str, cls: str = gate.REFUSED,
             first_error: str = "-", artifact_sha256: str = "-",
-            artifact_dest: str = "-") -> None:
+            artifact_dest: str = "-", run_id: str = "-",
+            started_utc: str = "-", finished_utc: str = "-", seconds: int = 0,
+            phase_seconds: str = "-") -> None:
     ledger.store_preimage(paths, lane, verdict.actual_id, verdict.states,
                           verdict.base_oid, verdict.toolchain_digest)
     ledger.append_row(
         paths, id=verdict.actual_id, utc=ledger.utc_now(), lane=lane.name, goal=goal,
         **{"class": cls}, outcome=outcome, first_error=first_error,
         artifact_sha256=artifact_sha256, artifact_dest=artifact_dest,
+        run_id=run_id, started_utc=started_utc, finished_utc=finished_utc,
+        seconds=seconds, phase_seconds=phase_seconds,
     )
 
 
@@ -122,6 +119,6 @@ def podman_argv(lane, toolchain, out_dir: Path | None, goal: str) -> list[str]:
         f"cd {tree} || exit 90; "
         "source build/envsetup.sh || exit 90; "
         'lunch "$LUNCH" || exit 90; '
-        "m nothing || exit 91; "
-        f"WITH_SU=true mka {goal}",
+        "printf '@@ROM_STAGE=SOONG\\n'; m nothing || exit 91; "
+        f"printf '@@ROM_STAGE=NINJA\\n'; WITH_SU=true mka {goal}",
     ]
