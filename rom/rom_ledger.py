@@ -24,10 +24,11 @@ def utc_now() -> str:
 COLUMNS = [
     "id", "utc", "lane", "goal", "class", "outcome",
     "first_error", "artifact_sha256", "artifact_dest",
+    "run_id", "started_utc", "finished_utc", "seconds", "phase_seconds",
 ]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Paths:
     root: Path
 
@@ -53,6 +54,15 @@ def append_row(paths: Paths, **fields) -> None:
     paths.root.mkdir(parents=True, exist_ok=True)
     if not paths.attempts.exists():
         paths.attempts.write_text("\t".join(COLUMNS) + "\n")
+    else:
+        lines = paths.attempts.read_text().splitlines()
+        headings = lines[0].split("\t") if lines else []
+        if headings != COLUMNS:
+            migrated = ["\t".join(COLUMNS)]
+            for line in lines[1:]:
+                values = dict(zip(headings, line.split("\t")))
+                migrated.append("\t".join(_clean(values.get(column, "-")) for column in COLUMNS))
+            paths.attempts.write_text("\n".join(migrated) + "\n")
     row = "\t".join(_clean(fields.get(column, "-")) for column in COLUMNS)
     with paths.attempts.open("a") as fh:
         fh.write(row + "\n")
@@ -62,7 +72,16 @@ def read_rows(paths: Paths) -> list[dict[str, str]]:
     if not paths.attempts.exists():
         return []
     lines = paths.attempts.read_text().splitlines()
-    return [dict(zip(COLUMNS, line.split("\t"))) for line in lines[1:] if line.strip()]
+    if not lines:
+        return []
+    headings = lines[0].split("\t")
+    rows = []
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        parsed = dict(zip(headings, line.split("\t")))
+        rows.append({column: parsed.get(column, "-") for column in COLUMNS})
+    return rows
 
 
 def _manifest_snapshot(tree: Path) -> tuple[str, bytes] | tuple[None, None]:
