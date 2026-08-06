@@ -1,0 +1,6 @@
+[Unit]
+Description=Reconcile ROM build monitoring state
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /srv/android/tools/patches/rom/rom_watchdog.py
