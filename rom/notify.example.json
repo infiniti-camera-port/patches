@@ -1,0 +1,8 @@
+{
+  "ntfy_url": "https://ntfy.sh/REPLACE_WITH_RANDOM_TOPIC",
+  "spool_dir": "/srv/android/logs/notify-spool",
+  "timeout_seconds": 5,
+  "token_file": null,
+  "paseo_host": null,
+  "paseo_agent_id": null
+}
