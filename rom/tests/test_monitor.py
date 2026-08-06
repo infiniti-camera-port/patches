@@ -39,6 +39,17 @@ def test_progress_parser_resets_eta_when_total_changes_materially() -> None:
     assert progress.eta_seconds is None
 
 
+def test_progress_parser_retains_last_counter_on_non_progress_lines() -> None:
+    parser = rom_monitor.ProgressParser(phase="NINJA")
+    parser.feed("[ 60% 6/10 4s remaining] compile", 1)
+
+    progress = parser.feed("error: synthetic failure", 2)
+
+    assert progress.phase == "NINJA"
+    assert progress.percent == 60
+    assert progress.completed == 6
+
+
 def test_status_writer_preserves_flat_contract_and_plain_tail(tmp_path: Path) -> None:
     status = tmp_path / "STATUS"
     writer = rom_monitor.StatusWriter(status, tmp_path / "events.jsonl")

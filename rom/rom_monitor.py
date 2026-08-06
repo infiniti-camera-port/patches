@@ -126,6 +126,7 @@ class ProgressParser:  # noqa: MUTABLE_OK
     phase: str = "STARTING"
     lines: deque[str] = field(default_factory=lambda: deque(maxlen=200))
     samples: deque[tuple[float, int, int]] = field(default_factory=lambda: deque(maxlen=8))
+    current: Progress = field(default_factory=lambda: Progress("STARTING"))
 
     def feed(self, raw: str, now: float | None = None) -> Progress:
         line = sanitize_line(raw)
@@ -144,7 +145,14 @@ class ProgressParser:  # noqa: MUTABLE_OK
 
         match = NINJA_RE.match(line)
         if match is None:
-            return Progress(phase=self.phase if PHASES.index(self.phase) >= PHASES.index(previous) else previous)
+            if self.phase != previous:
+                self.current = Progress(self.phase)
+            else:
+                self.current = Progress(
+                    self.phase, self.current.percent, self.current.completed, self.current.total,
+                    self.current.eta_seconds, self.current.native_eta,
+                )
+            return self.current
         completed = int(match.group("done"))
         total = int(match.group("total"))
         percent = int(match.group("percent"))
@@ -153,7 +161,8 @@ class ProgressParser:  # noqa: MUTABLE_OK
             self.samples.clear()
         self.samples.append((stamp, completed, total))
         eta = self._eta(completed, total)
-        return Progress(self.phase, percent, completed, total, eta, match.group("eta"))
+        self.current = Progress(self.phase, percent, completed, total, eta, match.group("eta"))
+        return self.current
 
     def _eta(self, completed: int, total: int) -> int | None:
         if len(self.samples) < 3 or completed >= total:
