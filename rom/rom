@@ -12,8 +12,9 @@ That is not advice, it is the exit status.
 from __future__ import annotations
 
 import argparse
+import json
 import os
-import signal
+import re
 import subprocess
 import sys
 import time
@@ -27,6 +28,8 @@ import rom_ledger as ledger  # noqa: E402
 import rom_build as builds  # noqa: E402
 import rom_lfs as lfs  # noqa: E402
 import rom_lanes as lanes  # noqa: E402
+import rom_monitor as monitor  # noqa: E402
+import rom_runtime as runtime  # noqa: E402
 from rom_identity import IdentityError, OfflineError  # noqa: E402
 from rom_lanes import LaneError  # noqa: E402
 
@@ -39,12 +42,7 @@ def _stamp() -> str:
 
 
 def write_status(lane: lanes.Lane, state: str, detail: str, **extra) -> None:
-    lane.status_file.parent.mkdir(parents=True, exist_ok=True)
-    fields = " ".join(f"{k}={v}" for k, v in extra.items())
-    lane.status_file.write_text(
-        f"state={state} lane={lane.name} target={lane.lunch} "
-        f"{fields} detail={detail} updated={ledger.utc_now()}\n"
-    )
+    runtime.write_simple_status(lane, state, detail, **extra)
 
 
 def cmd_ledger(args, lane, toolchain) -> int:
@@ -194,70 +192,54 @@ def cmd_build(args, lane, toolchain) -> int:
             return 2
         print(f"override accepted for actual id {verdict.actual_id}")
 
-    build_class = gate.EXPERIMENTAL if verdict.state != gate.PINNED else gate.PINNED
-    stamp = _stamp()
-    out_dir = Path(args.out) if args.out else None
-    if out_dir:
-        out_dir.mkdir(parents=True, exist_ok=True)
-    observed_out = out_dir or (lane.tree / "out")
-    log = lane.status_file.parent / f"{lane.name}-build-{stamp}.log"
-    log.parent.mkdir(parents=True, exist_ok=True)
-
-    write_status(lane, "RUNNING", f"goal={args.goal}", id=verdict.actual_id,
-                 cls=build_class, log=log)
-
-    # run-build.sh trapped INT/TERM so a killed build could not leave its status
-    # pinned on RUNNING forever - a monitor reporting healthy while the build is
-    # dead. Retiring that wrapper without carrying the trap across reintroduced
-    # exactly that: a bootimage build completed successfully while its verdict
-    # and its ledger row were both lost with the parent process.
-    def _interrupted(signum, _frame):
-        write_status(lane, "INTERRUPTED", f"signal={signum} goal={args.goal}",
-                     id=verdict.actual_id, cls=build_class, log=log)
-        builds.record(builds.ledger_paths(toolchain, REPO_ROOT), lane, verdict,
-                      args.goal, "INTERRUPTED", cls=build_class,
-                      first_error=f"signal {signum}")
-        os._exit(130)
-
-    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
-        signal.signal(sig, _interrupted)
-
-    argv = builds.podman_argv(lane, toolchain, out_dir, args.goal)
-    try:
-        with log.open("wb") as fh:
-            done = subprocess.run(argv, stdout=fh, stderr=subprocess.STDOUT)
-    except FileNotFoundError as exc:
-        # An attempt that dies before it starts is still an attempt. Letting
-        # this escape would leave the ledger with a gap exactly where something
-        # went wrong, which is the opposite of what an append-only record is for.
-        detail = f"container runtime unavailable: {exc.filename}"
-        write_status(lane, "FAILED", detail, id=verdict.actual_id, cls=build_class)
-        builds.record(builds.ledger_paths(toolchain, REPO_ROOT), lane, verdict, args.goal, "FAILED",
-                cls=build_class, first_error=detail)
-        print(detail, file=sys.stderr)
-        return 4
-
-    root_owned = subprocess.run(
-        ["find", str(observed_out), "-user", "root"], capture_output=True, text=True
+    options = runtime.BuildOptions(
+        goal=args.goal,
+        override=args.override,
+        out_dir=Path(args.out) if args.out else None,
     )
-    strays = len([x for x in root_owned.stdout.splitlines() if x])
+    return runtime.execute_build(options, lane, toolchain, verdict, REPO_ROOT)
 
+
+def cmd_observe(args, lane, _toolchain) -> int:
+    writer = monitor.StatusWriter(lane.status_file, runtime.event_file(lane))
+    while True:
+        try:
+            state = writer.read()
+        except FileNotFoundError:
+            print(f"no structured status at {writer.json_file}", file=sys.stderr)
+            return 1
+        if args.json:
+            print(json.dumps(state, sort_keys=True))
+        else:
+            for key in ("state", "lane", "run", "phase", "progress", "completed", "total",
+                        "eta_s", "log", "artifact_dest", "heartbeat", "detail"):
+                if key in state:
+                    print(f"{key:<14}{state[key]}")
+            tail = state.get("tail", [])
+            if tail:
+                print("\ntransition tail:")
+                for line in tail:
+                    print(f"  {line}")
+        if not args.follow:
+            return 0
+        time.sleep(2)
+
+
+def session_name(lane_name: str, action: str, goal: str, stamp: str | None = None) -> str:
+    raw = f"rom-{lane_name}-{goal if action == 'build' else action}-{stamp or _stamp()}"
+    return re.sub(r"[^a-z0-9-]+", "-", raw.lower()).strip("-")
+
+
+def cmd_launch(args, lane, _toolchain) -> int:
+    name = session_name(lane.name, args.launch_action, args.goal)
+    command = [str(Path(__file__).resolve()), lane.name, args.launch_action]
+    if args.launch_action == "build":
+        command.append(args.goal)
+    done = subprocess.run(
+        ["tmux", "new-session", "-d", "-s", name, "-e", f"ROM_SESSION_NAME={name}", *command]
+    )
     if done.returncode == 0:
-        write_status(lane, "SUCCESS", f"rc=0 goal={args.goal}",
-                     id=verdict.actual_id, cls=build_class, log=log,
-                     root_owned=strays)
-        art, digest = builds.artifact(observed_out, args.goal)
-        art = builds.publish(lane, verdict.actual_id, art)
-        builds.record(builds.ledger_paths(toolchain, REPO_ROOT), lane, verdict, args.goal, "SUCCESS", cls=build_class,
-                artifact_sha256=digest, artifact_dest=art)
-    else:
-        first = builds.first_error(log)
-        write_status(lane, "FAILED", f"rc={done.returncode} goal={args.goal}",
-                     id=verdict.actual_id, cls=build_class, log=log,
-                     root_owned=strays)
-        builds.record(builds.ledger_paths(toolchain, REPO_ROOT), lane, verdict, args.goal, "FAILED", cls=build_class,
-                first_error=first)
-    print(f"build finished rc={done.returncode} log={log}")
+        print(name)
     return done.returncode
 
 
@@ -285,6 +267,14 @@ def main() -> int:
     p_recon = sub.add_parser("reconstruct")
     p_recon.add_argument("id")
 
+    p_observe = sub.add_parser("observe")
+    p_observe.add_argument("--follow", action="store_true")
+    p_observe.add_argument("--json", action="store_true")
+
+    p_launch = sub.add_parser("launch")
+    p_launch.add_argument("launch_action", choices=("build", "sync"))
+    p_launch.add_argument("goal", nargs="?", default="bacon")
+
     args = parser.parse_args()
     try:
         lane, toolchain = lanes.load_lane(args.lane)
@@ -293,7 +283,8 @@ def main() -> int:
         return 64
 
     handler = {"status": cmd_status, "sync": cmd_sync, "build": cmd_build,
-               "ledger": cmd_ledger, "reconstruct": cmd_reconstruct}[args.action]
+               "ledger": cmd_ledger, "reconstruct": cmd_reconstruct,
+               "observe": cmd_observe, "launch": cmd_launch}[args.action]
     try:
         return handler(args, lane, toolchain)
     except (LaneError, IdentityError) as exc:
