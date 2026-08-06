@@ -20,9 +20,6 @@ REQUIRED_PATCHES: Final = frozenset(
         "device-not-debuggable-macan",
         "device-not-debuggable-macanc",
         "device-not-debuggable-fairlady",
-        "libsensorbridge-dep-macan",
-        "libsensorbridge-dep-macanc",
-        "libsensorbridge-dep-fairlady",
     }
 )
 REQUIRED_MANIFEST_KEYS: Final = frozenset(

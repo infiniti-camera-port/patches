@@ -4,7 +4,7 @@ This repository has three deliberately separate lanes:
 
 - `patch/`: guarded downstream portability profile, eight series and 40 source
   patches for `infiniti` only.
-- `build-patches/`: six guarded crDroid build-only overlays.
+- `build-patches/`: ten guarded crDroid build-only overlays.
 - `los-fix-build-patches/`: four historical LineageOS-only compile fixes.
 
 The complete promoted build graph is published separately in

@@ -94,35 +94,6 @@ DNG_FILES = {
 """
 }
 
-def vendor_camera_files() -> dict[str, str]:
-    # The libsensorbridge-dep-* patches delete one "libsensorbridge" line from
-    # four shared_libs blocks in the generated vendor Android.bp. git apply
-    # needs the exact hunk preimages (16-space indentation) to accept the
-    # patch, so the fixture mirrors those blocks verbatim.
-    tail_block = """                "vendor.oplus.hardware.cammidasservice-V1-ndk",
-                "libmidasserviceintf_aidl",
-                "android.frameworks.sensorservice@1.0",
-                "libsensorbridge",
-                "libbinder_ndk",
-                "vendor.oplus.hardware.charger-V8-ndk",
-                "liboutils",
-"""
-    blocks = [
-        """                "libopluscameraframeboost",
-                "android.frameworks.sensorservice@1.0",
-                "libsensorndkbridge",
-                "libsensorbridge",
-                "libhardware_legacy",
-                "libz",
-                "libdl",
-""",
-        tail_block,
-        tail_block,
-        tail_block,
-    ]
-    return {"Android.bp": "// camera-stack shared_libs fixture\n" + "\n".join(blocks)}
-
-
 SETTINGS_FILES = {
     "src/com/android/settings/dashboard/CategoryManager.java": """package com.android.settings.dashboard;
 
@@ -226,8 +197,6 @@ def create_repo_root(root: Path) -> Path:
     }
     for device in ("infiniti", "macan", "macanc", "fairlady"):
         fixtures[f"device/oneplus/{device}"] = device_files(device)
-    for device in ("macan", "macanc", "fairlady"):
-        fixtures[f"vendor/oneplus/{device}"] = vendor_camera_files()
     for relative, files in fixtures.items():
         initialize_repo(root / relative, files)
     _assert_covers_manifest(fixtures)
