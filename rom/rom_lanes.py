@@ -18,7 +18,7 @@ class LaneError(Exception):
     pass
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Project:
     path: str
     name: str
@@ -27,7 +27,7 @@ class Project:
     governed: bool
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Lane:
     name: str
     tree: Path
@@ -44,7 +44,7 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def load_config() -> dict:
+def load_config() -> dict:  # noqa: DICT_OK - legacy JSON schema shared by lane helpers
     # ROM_LANES exists so the gate can be drilled against a scratch fixture.
     # A gate whose failure path has never been observed is not a gate.
     override = os.environ.get("ROM_LANES")
@@ -72,7 +72,9 @@ def load_lane(name: str) -> tuple[Lane, dict]:
         governed_org=row["governed_org"],
         reconciliation=row.get("reconciliation", {"mode": "published-head"}),
     )
-    return lane, config["toolchain"]
+    toolchain = dict(config["toolchain"])
+    toolchain["monitoring"] = config.get("monitoring", {})
+    return lane, toolchain
 
 
 def overlay_targets(toolchain: dict) -> list[str]:
