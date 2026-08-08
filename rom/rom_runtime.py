@@ -272,7 +272,14 @@ def execute_build(
         terminalized = True
         print(f"build finished rc={returncode} log={log}")
         return returncode
-    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
+    except (
+        KeyError,
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        subprocess.SubprocessError,
+    ) as exc:
         fields.update(state="FAILED", detail=f"monitor-error-{type(exc).__name__}")
         writer.write(fields, lines, transition=True)
         _notify(notifier, fields, "FAILED", lines or (str(exc),), "-", "-", 4)

@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
@@ -225,3 +227,53 @@ def test_successful_child_with_ledger_failure_cannot_claim_success(
     assert calls == 1
     assert status["state"] == "LEDGER_WRITE_FAILED"
     assert status["detail"] == "ledger-write-failed"
+
+
+@pytest.mark.parametrize(
+    ("partial_toolchain", "missing_key"),
+    [
+        ({"image": "unused"}, "ccache"),
+        ({"ccache": "/tmp/cache"}, "image"),
+    ],
+)
+def test_missing_required_toolchain_key_terminalizes_one_failed_ledger_row(
+    tmp_path: Path,
+    partial_toolchain: rom_runtime.ToolchainConfig,
+    missing_key: str,
+) -> None:
+    # Given a nonempty receipt and one missing directly indexed toolchain key.
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    lane = FakeLane("test", tree, tmp_path / "logs" / "STATUS", tmp_path / "artifacts")
+    verdict = SimpleNamespace(
+        state=rom_runtime.gate.PINNED,
+        actual_id="a" * 64,
+        states=[real_project()],
+        base_oid="b" * 40,
+        toolchain_digest="c" * 64,
+    )
+    ledger_root = tmp_path / "ledger"
+    toolchain: rom_runtime.ToolchainConfig = {
+        "ledger": str(ledger_root),
+        "monitoring": {},
+        **partial_toolchain,
+    }
+
+    # When attempt setup reaches the required toolchain access.
+    returncode = rom_runtime.execute_build(
+        rom_runtime.BuildOptions("bacon", None, None),
+        lane,
+        toolchain,
+        verdict,
+        tmp_path,
+    )
+
+    # Then the config failure is contained, terminal, truthful, and recorded once.
+    status = __import__("json").loads(lane.status_file.with_name("STATUS.json").read_text())
+    rows = rom_runtime.builds.ledger.read_rows(rom_runtime.builds.ledger.Paths(ledger_root))
+    assert returncode == 4
+    assert status["state"] == "FAILED"
+    assert status["detail"] == "monitor-error-KeyError"
+    assert len(rows) == 1
+    assert rows[0]["outcome"] == "FAILED"
+    assert missing_key in rows[0]["first_error"]
