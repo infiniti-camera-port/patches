@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import signal
@@ -22,6 +23,10 @@ from rom_notify import EventId, Notifier, NotifyEvent, load_notifier
 
 GIB: Final = 1 << 30
 LEDGER_WRITE_FAILED: Final = 74
+
+
+class TerminalStatusError(RuntimeError):
+    pass
 
 
 class MonitoringConfig(TypedDict, total=False):
@@ -236,8 +241,29 @@ def execute_build(
                         fields,
                         tail,
                     )
-                except (OSError, RuntimeError, TypeError, ValueError):
-                    return
+                except (OSError, RuntimeError, TypeError, ValueError) as snapshot_exc:
+                    add_secondary(
+                        f"status-snapshot: {type(snapshot_exc).__name__}: {snapshot_exc}"
+                    )
+                    try:
+                        clean_tail = monitor.bounded_tail(tail)
+                        document: dict[str, monitor.Scalar | list[str]] = dict(fields)
+                        document["tail"] = clean_tail
+                        document["updated"] = monitor.utc_now()
+                        document["heartbeat"] = monitor.utc_now()
+                        writer.status_file.parent.mkdir(parents=True, exist_ok=True)
+                        flat = " ".join(
+                            f"{key}={str(value).replace(' ', '_')}"
+                            for key, value in fields.items()
+                        )
+                        writer.status_file.write_text(f"{flat}\n")
+                        writer.json_file.write_text(
+                            json.dumps(document, sort_keys=True) + "\n"
+                        )
+                    except (OSError, RuntimeError, TypeError, ValueError) as emergency_exc:
+                        raise TerminalStatusError(
+                            f"cannot persist terminal status: {emergency_exc}"
+                        ) from emergency_exc
 
     try:
         notifier = load_notifier(Path(__file__).with_name("notify.local.json"))
@@ -361,6 +387,8 @@ def execute_build(
         ValueError,
         subprocess.SubprocessError,
     ) as exc:
+        if isinstance(exc, TerminalStatusError):
+            raise
         fields.update(state="FAILED", detail=f"monitor-error-{type(exc).__name__}")
         ledger_error = record_attempt(
             builds.ledger_paths(toolchain, repo_root), lane, verdict, options.goal, "FAILED",

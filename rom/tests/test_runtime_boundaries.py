@@ -28,6 +28,10 @@ class NotifierLoadError(RuntimeError):
     pass
 
 
+class SnapshotWriteError(RuntimeError):
+    pass
+
+
 def fixture(tmp_path: Path) -> tuple[FakeLane, SimpleNamespace, Path]:
     tree = tmp_path / "tree"
     tree.mkdir()
@@ -144,4 +148,53 @@ def test_one_shot_terminal_status_failure_preserves_success_and_ledger(
     assert final["state"] == "SUCCESS"
     assert final["detail"] == "rc-0"
     assert "status down once" in str(final["secondary_error"])
+    assert ledger_outcomes(ledger_root) == ["SUCCESS"]
+
+
+def test_emergency_terminal_snapshot_prevents_stale_running_success(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # Given both StatusWriter retries and the ordinary snapshot fallback fail.
+    lane, verdict, ledger_root = fixture(tmp_path)
+    output = lane.tree / "out" / "target" / "product" / "device" / "test.zip"
+    script = (
+        "from pathlib import Path;"
+        f"p=Path({str(output)!r});p.parent.mkdir(parents=True);p.write_bytes(b'artifact')"
+    )
+    monkeypatch.setattr(
+        rom_runtime.builds,
+        "podman_argv",
+        lambda *_args: [sys.executable, "-c", script],
+    )
+    original_write = rom_runtime.monitor.StatusWriter.write
+    original_snapshot = rom_runtime.monitor.write_status_snapshot
+
+    def fail_terminal(self, fields, *args, **kwargs) -> None:
+        if fields["state"] != "RUNNING":
+            raise OSError("terminal writer down")
+        original_write(self, fields, *args, **kwargs)
+
+    def fail_snapshot(status_file, fields, *args, **kwargs):
+        if fields["state"] != "RUNNING":
+            raise SnapshotWriteError("snapshot down")
+        return original_snapshot(status_file, fields, *args, **kwargs)
+
+    monkeypatch.setattr(rom_runtime.monitor.StatusWriter, "write", fail_terminal)
+    monkeypatch.setattr(rom_runtime.monitor, "write_status_snapshot", fail_snapshot)
+
+    # When the successful result reaches terminal persistence.
+    returncode = rom_runtime.execute_build(
+        rom_runtime.BuildOptions("bacon", None, None),
+        lane,
+        {"ledger": str(ledger_root), "monitoring": {}},
+        verdict,
+        tmp_path,
+    )
+
+    # Then emergency persistence matches the sole SUCCESS row instead of RUNNING.
+    final = final_status(lane)
+    assert returncode == 0
+    assert final["state"] == "SUCCESS"
+    assert final["detail"] == "rc-0"
+    assert "snapshot down" in str(final["secondary_error"])
     assert ledger_outcomes(ledger_root) == ["SUCCESS"]
