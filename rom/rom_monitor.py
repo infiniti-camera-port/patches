@@ -70,6 +70,26 @@ def _atomic_write(path: Path, payload: bytes) -> None:
     os.replace(temporary, path)
 
 
+def write_status_snapshot(
+    status_file: Path,
+    fields: Mapping[str, Scalar],
+    tail: Sequence[str] = (),
+) -> dict[str, Scalar]:
+    clean_tail = bounded_tail(tail)
+    merged = dict(fields)
+    merged["heartbeat"] = str(merged.get("heartbeat") or utc_now())
+    merged["updated"] = str(merged.get("updated") or utc_now())
+    tail_bytes = "\n".join(clean_tail).encode()
+    merged["tail64"] = base64.urlsafe_b64encode(tail_bytes).decode().rstrip("=") or "-"
+    flat = " ".join(f"{key}={str(value).replace(' ', '_')}" for key, value in merged.items())
+    _atomic_write(status_file, f"{flat}\n".encode())
+    document: dict[str, Scalar | list[str]] = dict(merged)
+    document["tail"] = clean_tail
+    json_file = status_file.with_name(f"{status_file.name}.json")
+    _atomic_write(json_file, (json.dumps(document, sort_keys=True) + "\n").encode())
+    return merged
+
+
 class StatusWriter:
     """Write compatible flat status and structured state atomically."""
 
@@ -87,17 +107,10 @@ class StatusWriter:
         transition: bool = False,
     ) -> None:
         clean_tail = bounded_tail(tail)
-        merged = dict(fields)
-        merged["heartbeat"] = str(merged.get("heartbeat") or utc_now())
-        merged["updated"] = str(merged.get("updated") or utc_now())
-        tail_bytes = "\n".join(clean_tail).encode()
-        merged["tail64"] = base64.urlsafe_b64encode(tail_bytes).decode().rstrip("=") or "-"
-        flat = " ".join(f"{key}={str(value).replace(' ', '_')}" for key, value in merged.items())
-        _atomic_write(self.status_file, f"{flat}\n".encode())
-        document = dict(merged)
-        document["tail"] = clean_tail
-        _atomic_write(self.json_file, (json.dumps(document, sort_keys=True) + "\n").encode())
+        merged = write_status_snapshot(self.status_file, fields, clean_tail)
         if transition:
+            document: dict[str, Scalar | list[str]] = dict(merged)
+            document["tail"] = clean_tail
             event = dict(document)
             event["previous_state"] = self.last_fields.get("state", "-")
             self.event_file.parent.mkdir(parents=True, exist_ok=True)

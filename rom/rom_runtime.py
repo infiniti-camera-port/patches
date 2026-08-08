@@ -185,8 +185,7 @@ def execute_build(
     }
     heartbeat = float(monitoring.get("heartbeat_seconds", 15))
     observer = BuildObserver.create(writer, fields, heartbeat)
-    writer.write(fields, transition=True)
-    notifier = load_notifier(Path(__file__).with_name("notify.local.json"))
+    notifier: Notifier | None = None
     lines: tuple[str, ...] = ()
     terminalized = False
     ledger_attempted = False
@@ -222,7 +221,57 @@ def execute_build(
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
             add_secondary(f"notify: {type(exc).__name__}: {exc}")
 
+    def write_terminal(tail: Sequence[str]) -> None:
+        try:
+            writer.write(fields, tail, transition=True)
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            add_secondary(f"status: {type(exc).__name__}: {exc}")
+            try:
+                writer.write(fields, tail, transition=True)
+            except (OSError, RuntimeError, TypeError, ValueError) as retry_exc:
+                add_secondary(f"status-retry: {type(retry_exc).__name__}: {retry_exc}")
+                try:
+                    writer.last_fields = monitor.write_status_snapshot(
+                        writer.status_file,
+                        fields,
+                        tail,
+                    )
+                except (OSError, RuntimeError, TypeError, ValueError):
+                    return
+
+    try:
+        notifier = load_notifier(Path(__file__).with_name("notify.local.json"))
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        add_secondary(f"notify-load: {type(exc).__name__}: {exc}")
+
+    try:
+        writer.write(fields, transition=True)
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        fields.update(state="FAILED", detail=f"status-start-error-{type(exc).__name__}")
+        add_secondary(f"status-start: {type(exc).__name__}: {exc}")
+        ledger_error = record_attempt(
+            builds.ledger_paths(toolchain, repo_root),
+            lane,
+            verdict,
+            options.goal,
+            "FAILED",
+            cls=build_class,
+            first_error=str(exc)[:200],
+            run_id=run_id,
+            started_utc=started_utc,
+            finished_utc=monitor.utc_now(),
+            seconds=int(time.monotonic() - started_monotonic),
+            phase_seconds=observer.finish_phase(),
+        )
+        if ledger_error is not None:
+            add_secondary(ledger_error)
+        terminalized = True
+        notify_terminal("FAILED", (str(exc),), "-", "-", 4)
+        write_terminal((str(exc),))
+        return 4
+
     def interrupted(signum: int, _frame: FrameType | None) -> None:
+        nonlocal terminalized
         if observer.child_pid:
             try:
                 os.kill(observer.child_pid, signum)
@@ -237,8 +286,9 @@ def execute_build(
         )
         if ledger_error is not None:
             add_secondary(ledger_error)
+        terminalized = True
         notify_terminal("INTERRUPTED", observer.last_tail, "-", "-", 130)
-        writer.write(fields, observer.last_tail, transition=True)
+        write_terminal(observer.last_tail)
         os._exit(130)
 
     for caught_signal in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
@@ -300,7 +350,7 @@ def execute_build(
         )
         terminalized = True
         notify_terminal(state, lines, artifact_source, artifact_dest, returncode)
-        writer.write(fields, monitor.bounded_tail(lines), transition=True)
+        write_terminal(monitor.bounded_tail(lines))
         print(f"build finished rc={returncode} log={log}")
         return returncode
     except (
@@ -323,7 +373,7 @@ def execute_build(
             add_secondary(ledger_error)
         terminalized = True
         notify_terminal("FAILED", lines or (str(exc),), "-", "-", 4)
-        writer.write(fields, lines, transition=True)
+        write_terminal(lines)
         return 4
     finally:
         if not terminalized:
@@ -344,4 +394,4 @@ def execute_build(
             )
             if ledger_error is not None:
                 add_secondary(ledger_error)
-            writer.write(fields, lines, transition=True)
+            write_terminal(lines)
