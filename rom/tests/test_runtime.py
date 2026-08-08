@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import rom_runtime
+from build_composition import ResolvedProject
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,6 +19,17 @@ class FakeLane:
     status_file: Path
     artifacts: Path
     lunch: str = "test-userdebug"
+
+
+def real_project() -> ResolvedProject:
+    return ResolvedProject(
+        path="project/real",
+        revision="1" * 40,
+        head="2" * 40,
+        expected_tree="3" * 40,
+        effective_tree="4" * 40,
+        dirty=True,
+    )
 
 
 def test_disk_gate_refuses_impossible_threshold(tmp_path: Path) -> None:
@@ -46,7 +58,7 @@ def test_execute_build_publishes_and_records_before_success(tmp_path: Path, monk
     )
     monkeypatch.setattr(rom_runtime.builds, "podman_argv", lambda *_args: [sys.executable, "-c", script])
     verdict = SimpleNamespace(
-        state=rom_runtime.gate.PINNED, actual_id="a" * 64, states=[],
+        state=rom_runtime.gate.PINNED, actual_id="a" * 64, states=[real_project()],
         base_oid="b" * 40, toolchain_digest="c" * 64,
     )
     toolchain = {"ledger": str(tmp_path / "ledger"), "monitoring": {}}
@@ -71,7 +83,7 @@ def test_execute_build_failure_carries_final_error_tail(tmp_path: Path, monkeypa
     script = "print('@@ROM_STAGE=NINJA');print('error: final failure');raise SystemExit(1)"
     monkeypatch.setattr(rom_runtime.builds, "podman_argv", lambda *_args: [sys.executable, "-c", script])
     verdict = SimpleNamespace(
-        state=rom_runtime.gate.PINNED, actual_id="a" * 64, states=[],
+        state=rom_runtime.gate.PINNED, actual_id="a" * 64, states=[real_project()],
         base_oid="b" * 40, toolchain_digest="c" * 64,
     )
 
@@ -104,7 +116,7 @@ def test_child_failure_survives_secondary_ledger_failure_without_recursive_recor
 
     monkeypatch.setattr(rom_runtime.builds.ledger, "store_preimage", fail_store)
     verdict = SimpleNamespace(
-        state=rom_runtime.gate.PINNED, actual_id="a" * 64, states=[],
+        state=rom_runtime.gate.PINNED, actual_id="a" * 64, states=[real_project()],
         base_oid="b" * 40, toolchain_digest="c" * 64,
     )
 
@@ -122,6 +134,54 @@ def test_child_failure_survives_secondary_ledger_failure_without_recursive_recor
     assert status["detail"] == "rc-23"
     assert "error: child truth" in status["tail"]
     assert "ledger" in status["secondary_error"]
+
+
+def test_failed_child_records_nonempty_resolved_project_without_masking_result(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # Given a failing child and the same direct-field project shape as a real receipt.
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    lane = FakeLane("test", tree, tmp_path / "logs" / "STATUS", tmp_path / "artifacts")
+    script = "print('error: child truth');raise SystemExit(23)"
+    monkeypatch.setattr(
+        rom_runtime.builds,
+        "podman_argv",
+        lambda *_args: [sys.executable, "-c", script],
+    )
+    project = real_project()
+    verdict = SimpleNamespace(
+        state=rom_runtime.gate.PINNED,
+        actual_id="a" * 64,
+        states=[project],
+        base_oid="b" * 40,
+        toolchain_digest="c" * 64,
+    )
+    ledger_root = tmp_path / "ledger"
+
+    # When terminal recording serializes the nonempty receipt after child failure.
+    returncode = rom_runtime.execute_build(
+        rom_runtime.BuildOptions("bacon", None, None),
+        lane,
+        {"ledger": str(ledger_root), "monitoring": {}},
+        verdict,
+        tmp_path,
+    )
+
+    # Then the child result survives and the direct project fields are persisted.
+    status = __import__("json").loads(lane.status_file.with_name("STATUS.json").read_text())
+    preimage = __import__("json").loads((ledger_root / "preimages" / f"{verdict.actual_id}.json").read_text())
+    assert returncode == 23
+    assert status["state"] == "FAILED"
+    assert status["detail"] == "rc-23"
+    assert preimage["projects"] == [
+        {
+            "dirty": True,
+            "effective_tree": project.effective_tree,
+            "head": project.head,
+            "path": project.path,
+        }
+    ]
 
 
 def test_successful_child_with_ledger_failure_cannot_claim_success(
@@ -146,7 +206,7 @@ def test_successful_child_with_ledger_failure_cannot_claim_success(
 
     monkeypatch.setattr(rom_runtime.builds.ledger, "store_preimage", fail_store)
     verdict = SimpleNamespace(
-        state=rom_runtime.gate.PINNED, actual_id="a" * 64, states=[],
+        state=rom_runtime.gate.PINNED, actual_id="a" * 64, states=[real_project()],
         base_oid="b" * 40, toolchain_digest="c" * 64,
     )
 

@@ -29,12 +29,15 @@ class PartialVectorGit:
         *,
         reverse_operation: bool,
         corrupt_member: bool = False,
+        check_fault: BaseException | None = None,
     ) -> None:
         self.delegate = delegate
         self.item = item
         self.fault = fault
         self.reverse_operation = reverse_operation
         self.corrupt_member = corrupt_member
+        self.check_fault = check_fault
+        self.recovery_started = False
 
     def apply(self, repo: Path, patch_bytes: bytes, *, reverse: bool = False) -> CommandResult:
         if reverse == self.reverse_operation and patch_bytes == self.item.resolved.patch_bytes:
@@ -48,10 +51,13 @@ class PartialVectorGit:
                 member = self.item.members[3]
                 member.path.unlink(missing_ok=True)
                 member.path.symlink_to("../../unexpected/bin/tool")
+            self.recovery_started = True
             raise self.fault
         return self.delegate.apply(repo, patch_bytes, reverse=reverse)
 
     def apply_check(self, repo: Path, patch_bytes: bytes, *, reverse: bool = False) -> CommandResult:
+        if self.recovery_started and self.check_fault is not None:
+            raise self.check_fault
         return self.delegate.apply_check(repo, patch_bytes, reverse=reverse)
 
 
@@ -267,3 +273,38 @@ def test_partial_vector_with_concurrent_wrong_target_fails_closed_with_recovery_
     assert outcome.rollback_failed
     assert "manual recovery required for changed symlink" in outcome.message
     assert str(item.members[3].path) in outcome.message
+
+
+def test_partial_reverse_with_concurrent_wrong_target_names_manual_recovery(
+    tmp_path: Path,
+) -> None:
+    # Given a failed reverse also exposes a changed symlink not owned by the invocation.
+    overlay = copy_overlay(tmp_path / "overlay")
+    repo_root = create_repo_root(tmp_path / "repo")
+    prepared, git = _prepared_vector(overlay, repo_root, tmp_path / "hooks")
+    item = next(row for row in prepared if row.resolved.entry.name == "remove-broken-build-tools")
+    assert execute_transaction([item], git).ok
+    applied, git = _prepared_vector(overlay, repo_root, tmp_path / "hooks-2")
+    applied_item = next(row for row in applied if row.resolved.entry.name == "remove-broken-build-tools")
+
+    # When reverse recovery probes the entire vector.
+    outcome = execute_reverse_transaction(
+        [applied_item],
+        PartialVectorGit(
+            git,
+            applied_item,
+            OSError("injected"),
+            reverse_operation=True,
+            corrupt_member=True,
+        ),
+    )
+
+    # Then it refuses the changed link, removes owned restorations, and names recovery.
+    assert not outcome.ok
+    assert outcome.rollback_failed
+    assert "manual recovery required for changed symlink" in outcome.message
+    assert str(applied_item.members[3].path) in outcome.message
+    assert all(
+        not member.path.exists() and not member.path.is_symlink()
+        for member in applied_item.members[:3]
+    )

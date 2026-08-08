@@ -38,7 +38,7 @@ def _capture_reversed(
         )
         data = b"" if item.members else item.resolved.target_file.read_bytes()
         mode = 0 if item.members else _mode(item.resolved.target_file)
-    except OSError as exc:
+    except (OSError, KeyboardInterrupt, SystemExit) as exc:
         return None, f"{type(exc).__name__} while inspecting reverse state: {exc}"
     if forward.ok and not reverse.ok:
         return ReversedPatch(item, data, mode), ""
@@ -84,7 +84,7 @@ def _remove_active_vector(item: PreparedPatch, git: GitOperations) -> str:
             metadata = member.path.lstat()
         except FileNotFoundError:
             continue
-        except OSError as exc:
+        except (OSError, KeyboardInterrupt, SystemExit) as exc:
             failures.append(f"{member.path}: {type(exc).__name__}: {exc}")
             continue
         if not stat.S_ISLNK(metadata.st_mode):
@@ -92,7 +92,7 @@ def _remove_active_vector(item: PreparedPatch, git: GitOperations) -> str:
             continue
         try:
             target = os.readlink(member.path)
-        except OSError as exc:
+        except (OSError, KeyboardInterrupt, SystemExit) as exc:
             failures.append(f"{member.path}: {type(exc).__name__}: {exc}")
             continue
         if target != member.target or stat.S_IFMT(metadata.st_mode) != member.mode:

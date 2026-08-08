@@ -48,7 +48,7 @@ def verify_patch_state(
                 if not applied:
                     return f"missing vector member {member.path}"
                 continue
-            except OSError as exc:
+            except (OSError, KeyboardInterrupt, SystemExit) as exc:
                 return f"{type(exc).__name__} while inspecting vector member: {exc}"
             if applied:
                 return f"unexpected vector member {member.path}"
@@ -56,7 +56,7 @@ def verify_patch_state(
                 return f"vector member is not a symlink {member.path}"
             try:
                 target = os.readlink(member.path)
-            except OSError as exc:
+            except (OSError, KeyboardInterrupt, SystemExit) as exc:
                 return f"{type(exc).__name__} while reading vector member: {exc}"
             if target != member.target or stat.S_IFMT(metadata.st_mode) != member.mode:
                 return f"vector member target or mode changed {member.path}"
@@ -67,7 +67,7 @@ def verify_patch_state(
         reverse = git.apply_check(
             item.resolved.repo_path, item.resolved.patch_bytes, reverse=True
         )
-    except OSError as exc:
+    except (OSError, KeyboardInterrupt, SystemExit) as exc:
         return f"{type(exc).__name__} during state verification: {exc}"
     if applied and (not reverse.ok or forward.ok):
         return f"expected applied state, forward_rc={forward.returncode} reverse_rc={reverse.returncode}"
@@ -118,7 +118,7 @@ def _restore_active_vector(item: PreparedPatch, git: GitOperations) -> str:
             except (OSError, KeyboardInterrupt, SystemExit) as exc:
                 failures.append(f"{member.path}: {type(exc).__name__}: {exc}")
             continue
-        except OSError as exc:
+        except (OSError, KeyboardInterrupt, SystemExit) as exc:
             failures.append(f"{member.path}: {type(exc).__name__}: {exc}")
             continue
         if not stat.S_ISLNK(metadata.st_mode):
@@ -126,7 +126,7 @@ def _restore_active_vector(item: PreparedPatch, git: GitOperations) -> str:
             continue
         try:
             target = os.readlink(member.path)
-        except OSError as exc:
+        except (OSError, KeyboardInterrupt, SystemExit) as exc:
             failures.append(f"{member.path}: {type(exc).__name__}: {exc}")
             continue
         if target != member.target or stat.S_IFMT(metadata.st_mode) != member.mode:
