@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import hashlib
 import re
 import stat
+from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
-from typing import Final, Mapping, NamedTuple
-
-from build_patch_payload import PatchPayloadError, read_verified_patch
+from typing import Final, NamedTuple
 
 REQUIRED_PATCHES: Final = frozenset(
     {
@@ -60,6 +58,11 @@ class ResolvedPatch(NamedTuple):
     patch_bytes: bytes
     repo_path: Path
     target_file: Path
+
+
+class ValidatedPatch(NamedTuple):
+    entry: BuildPatch
+    patch_bytes: bytes
 
 
 def _strip_value(raw_value: str) -> str:
@@ -209,45 +212,17 @@ def _regular_file(path: Path, label: str) -> None:
         raise ManifestError(f"{label} is not a regular file: {path}")
 
 
-def resolve_manifest(entries: list[BuildPatch], patches_dir: Path, repo_root: Path) -> list[ResolvedPatch]:
-    names = [entry.name for entry in entries]
-    duplicates = sorted({name for name in names if names.count(name) > 1})
-    if duplicates:
-        raise ManifestError(f"duplicate manifest entries: {duplicates}")
-    missing = sorted(REQUIRED_PATCHES - set(names))
-    unexpected = sorted(set(names) - REQUIRED_PATCHES)
-    if missing:
-        raise ManifestError(f"required patches missing from manifest: {missing}")
-    if unexpected:
-        raise ManifestError(f"unexpected patches in manifest: {unexpected}")
-    orders = sorted(entry.apply_order for entry in entries)
-    if orders != list(range(1, len(entries) + 1)):
-        raise ManifestError(f"apply_order must be unique and sequential 1..{len(entries)} (got {orders})")
-    try:
-        disk_paths = list(patches_dir.iterdir())
-    except OSError as exc:
-        raise ManifestError(f"cannot inventory patch directory: {exc}") from exc
-    patch_paths = [path for path in disk_paths if path.suffix == ".patch"]
-    disk_names = {path.stem for path in patch_paths}
-    orphans = sorted(disk_names - set(names))
-    absent = sorted(set(names) - disk_names)
-    if orphans:
-        raise ManifestError(f"orphan .patch files not in manifest: {orphans}")
-    if absent:
-        raise ManifestError(f"manifest entries with no .patch file on disk: {absent}")
+def select_registry(
+    validated: list[ValidatedPatch], repo_root: Path, project_paths: frozenset[str]
+) -> list[ResolvedPatch]:
     root = repo_root.resolve(strict=True)
     if repo_root.is_symlink():
         raise ManifestError(f"repo root is a symlink: {repo_root}")
     resolved: list[ResolvedPatch] = []
-    for entry in sorted(entries, key=lambda item: item.apply_order):
-        patch_file = patches_dir / f"{entry.name}.patch"
-        try:
-            patch_bytes = read_verified_patch(patch_file, entry.target_path)
-        except PatchPayloadError as exc:
-            raise ManifestError(f"{entry.name}: {exc}") from exc
-        actual_sha = hashlib.sha256(patch_bytes).hexdigest()
-        if actual_sha != entry.sha256:
-            raise ManifestError(f"{entry.name}: sha256 mismatch expected {entry.sha256} got {actual_sha}")
+    for item in validated:
+        entry = item.entry
+        if entry.target_repo not in project_paths:
+            continue
         repo_path = _walk_existing(root, entry.target_repo, f"{entry.name}: target_repo")
         if not repo_path.is_dir():
             raise ManifestError(f"{entry.name}: target_repo is not a directory: {repo_path}")
@@ -257,8 +232,19 @@ def resolve_manifest(entries: list[BuildPatch], patches_dir: Path, repo_root: Pa
         resolved_target = target_file.resolve(strict=True)
         if not _is_within(resolved_repo, root) or not _is_within(resolved_target, resolved_repo):
             raise ManifestError(f"{entry.name}: resolved path escapes repo root")
-        resolved.append(ResolvedPatch(entry, patch_bytes, resolved_repo, resolved_target))
+        resolved.append(ResolvedPatch(entry, item.patch_bytes, resolved_repo, resolved_target))
     return resolved
+
+
+def resolve_manifest(entries: list[BuildPatch], patches_dir: Path, repo_root: Path) -> list[ResolvedPatch]:
+    from build_patch_registry import validate_registry
+
+    validated = validate_registry(entries, patches_dir)
+    return select_registry(
+        validated,
+        repo_root,
+        frozenset(entry.entry.target_repo for entry in validated),
+    )
 
 
 def paths_are_current(resolved: ResolvedPatch) -> bool:

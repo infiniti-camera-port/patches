@@ -15,7 +15,9 @@ import tempfile
 from pathlib import Path
 from typing import Final, NamedTuple
 
-from build_patch_manifest import ManifestError, parse_manifest, resolve_manifest
+from build_composition import CompositionError, compose
+from build_patch_manifest import ManifestError
+from build_patch_reverse import execute_reverse_transaction
 from build_patch_runtime import GitClient, PatchResult, prepare_patches, report_rows
 from build_patch_transaction import execute_transaction, verify_prepared_snapshot
 
@@ -25,6 +27,7 @@ MANIFEST_PATH: Final = PATCHES_DIR / "manifest.yml"
 
 class Arguments(NamedTuple):
     check_only: bool
+    reverse: bool
     repo_root: Path
 
 
@@ -47,21 +50,30 @@ def _arguments() -> Arguments:
         action="store_true",
         help="Validate manifest and check patch state without applying.",
     )
+    parser.add_argument("--reverse", action="store_true", help="Transactionally reverse the selected overlays.")
     parser.add_argument("--repo-root", type=Path, default=Path("."), help="Android source checkout root.")
     namespace = parser.parse_args()
-    return Arguments(check_only=namespace.check_only is True, repo_root=namespace.repo_root)
+    return Arguments(
+        check_only=namespace.check_only is True,
+        reverse=namespace.reverse is True,
+        repo_root=namespace.repo_root,
+    )
 
 
 def main() -> int:
     arguments = _arguments()
     repo_root = arguments.repo_root
     try:
-        entries = parse_manifest(MANIFEST_PATH)
-        resolved = resolve_manifest(entries, PATCHES_DIR, repo_root)
-    except (ManifestError, OSError) as exc:
+        receipt = compose(repo_root, PATCHES_DIR, MANIFEST_PATH)
+        resolved = list(receipt.selection)
+    except (CompositionError, ManifestError, OSError) as exc:
         print(f"[MANIFEST FAIL] {exc}", file=sys.stderr)
         print("\nGATE: FAIL - manifest invalid; fix patches/build-patches/manifest.yml")
         return 1
+    print(f"registry-digest    {receipt.registry_digest}")
+    print(f"composition-digest {receipt.composition_digest}")
+    print(f"selection-digest   {receipt.selection_digest}")
+    print(f"selection           {len(resolved)} patch(es) / {len({item.entry.target_repo for item in resolved})} target(s)")
     with tempfile.TemporaryDirectory(prefix="build-patch-git-") as raw_directory:
         hooks_directory = Path(raw_directory) / "hooks"
         hooks_directory.mkdir(mode=0o700)
@@ -95,10 +107,15 @@ def main() -> int:
             _print_report(report_rows(prepared, applied=False))
             print("\nGATE: CHECK-ONLY PASS - patches are forward- or reverse-applicable; NOT a build gate")
             return 0
-        outcome = execute_transaction(prepared, git)
+        outcome = (
+            execute_reverse_transaction(prepared, git)
+            if arguments.reverse
+            else execute_transaction(prepared, git)
+        )
         if outcome.ok:
-            _print_report(report_rows(prepared, applied=True))
-            print("\nGATE: PASS - all patches applied=YES; proceed to build")
+            _print_report(report_rows(prepared, applied=not arguments.reverse))
+            action = "reversed" if arguments.reverse else "applied"
+            print(f"\nGATE: PASS - all selected patches {action} transactionally")
             return 0
         if outcome.rollback_failed:
             print(f"[ROLLBACK_FAIL] {outcome.message}", file=sys.stderr)

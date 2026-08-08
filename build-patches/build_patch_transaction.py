@@ -28,7 +28,7 @@ def _matches(path: Path, data: bytes, mode: int) -> bool:
         return False
 
 
-def _verify(
+def verify_patch_state(
     item: PreparedPatch,
     git: GitOperations,
     data: bytes,
@@ -42,7 +42,9 @@ def _verify(
         return "concurrent target content or mode change"
     try:
         forward = git.apply_check(item.resolved.repo_path, item.resolved.patch_bytes)
-        reverse = git.apply_check(item.resolved.repo_path, item.resolved.patch_bytes, reverse=True)
+        reverse = git.apply_check(
+            item.resolved.repo_path, item.resolved.patch_bytes, reverse=True
+        )
     except OSError as exc:
         return f"{type(exc).__name__} during state verification: {exc}"
     if applied and (not reverse.ok or forward.ok):
@@ -52,23 +54,31 @@ def _verify(
     return ""
 
 
-def _rollback(applied_items: list[PreparedPatch], git: GitOperations) -> tuple[bool, str]:
+def _rollback(
+    applied_items: list[PreparedPatch], git: GitOperations
+) -> tuple[bool, str]:
     failures: list[str] = []
     for item in reversed(applied_items):
         name = item.resolved.entry.name
-        before_reverse = _verify(item, git, item.after, item.after_mode, applied=True)
+        before_reverse = verify_patch_state(
+            item, git, item.after, item.after_mode, applied=True
+        )
         if before_reverse:
             failures.append(f"{name}: rollback CAS refused: {before_reverse}")
             continue
         try:
-            result = git.apply(item.resolved.repo_path, item.resolved.patch_bytes, reverse=True)
+            result = git.apply(
+                item.resolved.repo_path, item.resolved.patch_bytes, reverse=True
+            )
         except (OSError, KeyboardInterrupt, SystemExit) as exc:
             failures.append(f"{name}: reverse apply raised {type(exc).__name__}: {exc}")
             continue
         if not result.ok:
             failures.append(f"{name}: reverse apply failed: {result.stderr}")
             continue
-        after_reverse = _verify(item, git, item.before, item.before_mode, applied=False)
+        after_reverse = verify_patch_state(
+            item, git, item.before, item.before_mode, applied=False
+        )
         if after_reverse:
             failures.append(f"{name}: rollback verification failed: {after_reverse}")
     return not failures, "; ".join(failures)
@@ -84,11 +94,15 @@ def _recover(
 ) -> TransactionOutcome:
     cleanup_failures: list[str] = []
     if active is not None and active not in prepared_applied:
-        applied_state = _verify(active, git, active.after, active.after_mode, applied=True)
+        applied_state = verify_patch_state(
+            active, git, active.after, active.after_mode, applied=True
+        )
         if not applied_state:
             prepared_applied.append(active)
         else:
-            before_state = _verify(active, git, active.before, active.before_mode, applied=False)
+            before_state = verify_patch_state(
+                active, git, active.before, active.before_mode, applied=False
+            )
             if before_state:
                 cleanup_failures.append(
                     f"{active.resolved.entry.name}: active state is ambiguous: applied={applied_state}; unapplied={before_state}"
@@ -103,7 +117,7 @@ def _recover(
 
 def verify_prepared_snapshot(prepared: list[PreparedPatch], git: GitOperations) -> str:
     for item in prepared:
-        initial_state = _verify(
+        initial_state = verify_patch_state(
             item,
             git,
             item.before,
@@ -115,7 +129,9 @@ def verify_prepared_snapshot(prepared: list[PreparedPatch], git: GitOperations) 
     return ""
 
 
-def execute_transaction(prepared: list[PreparedPatch], git: GitOperations) -> TransactionOutcome:
+def execute_transaction(
+    prepared: list[PreparedPatch], git: GitOperations
+) -> TransactionOutcome:
     initial_error = verify_prepared_snapshot(prepared, git)
     if initial_error:
         return TransactionOutcome(False, False, False, initial_error)
@@ -132,7 +148,9 @@ def execute_transaction(prepared: list[PreparedPatch], git: GitOperations) -> Tr
         for item in prepared:
             if not item.pending:
                 continue
-            current_state = _verify(item, git, item.before, item.before_mode, applied=False)
+            current_state = verify_patch_state(
+                item, git, item.before, item.before_mode, applied=False
+            )
             if current_state:
                 return _recover(
                     f"concurrent target change before {item.resolved.entry.name}: {current_state}",
@@ -162,7 +180,9 @@ def execute_transaction(prepared: list[PreparedPatch], git: GitOperations) -> Tr
                 )
             applied_items.append(item)
             active = None
-            post_state = _verify(item, git, item.after, item.after_mode, applied=True)
+            post_state = verify_patch_state(
+                item, git, item.after, item.after_mode, applied=True
+            )
             if post_state:
                 return _recover(
                     f"post-apply verification failed for {item.resolved.entry.name}: {post_state}",
@@ -174,7 +194,9 @@ def execute_transaction(prepared: list[PreparedPatch], git: GitOperations) -> Tr
         for item in prepared:
             final_data = item.after if item.pending else item.before
             final_mode = item.after_mode if item.pending else item.before_mode
-            final_state = _verify(item, git, final_data, final_mode, applied=True)
+            final_state = verify_patch_state(
+                item, git, final_data, final_mode, applied=True
+            )
             if final_state:
                 return _recover(
                     f"final verification failed for {item.resolved.entry.name}: {final_state}",
@@ -183,7 +205,9 @@ def execute_transaction(prepared: list[PreparedPatch], git: GitOperations) -> Tr
                     git,
                     interrupted=False,
                 )
-        return TransactionOutcome(True, False, False, "all patches applied and verified")
+        return TransactionOutcome(
+            True, False, False, "all patches applied and verified"
+        )
     except (OSError, KeyboardInterrupt, SystemExit) as exc:
         return _recover(
             f"{type(exc).__name__} during transaction: {exc}",

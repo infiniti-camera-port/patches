@@ -5,11 +5,18 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+
+BUILD_PATCHES = Path(__file__).resolve().parent.parent / "build-patches"
+if str(BUILD_PATCHES) not in sys.path:
+    sys.path.insert(0, str(BUILD_PATCHES))
+
+from build_composition import CompositionReceipt, compose
 
 DEFAULT_FETCH_BASE = "https://github.com/"
 
@@ -163,16 +170,10 @@ def read_installed_manifest(lane: Lane) -> str:
     return installed.read_text()
 
 
-def fold_set(lane: Lane, toolchain: dict) -> list[Project]:
-    """Governed projects plus overlay targets, deduplicated by path."""
-    declared = manifest_projects(read_installed_manifest(lane), lane.governed_org)
-    projects = {p.path: p for p in declared}
-    for path in overlay_targets(toolchain):
-        if path not in projects:
-            projects[path] = Project(
-                path=path, name=path, revision="", remote_url="", governed=False
-            )
-    return [projects[path] for path in sorted(projects)]
+def fold_set(lane: Lane, toolchain: dict) -> CompositionReceipt:
+    declared = Path(toolchain["overlay_manifest"])
+    manifest = declared if declared.is_absolute() else _repo_root() / declared
+    return compose(lane.tree, manifest.parent, manifest)
 
 
 def base_manifest_oid(lane: Lane) -> str:
@@ -184,6 +185,7 @@ def base_manifest_oid(lane: Lane) -> str:
         ["git", "-C", str(manifests), "rev-parse", "--verify", "-q", "HEAD"],
         capture_output=True,
         text=True,
+        check=False,
     )
     if done.returncode != 0:
         raise LaneError(f"lane {lane.name}: cannot resolve base manifest HEAD")

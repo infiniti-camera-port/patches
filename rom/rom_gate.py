@@ -7,29 +7,27 @@ decides the response, and both classes are visible in the same per-project fold.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import json
-
-import yaml
-
 import rom_identity as identity
-from rom_lanes import Lane, Project, base_manifest_oid
+from build_composition import CompositionReceipt
+from rom_lanes import Lane, base_manifest_oid
 
 PINNED = "PINNED"
 EXPERIMENTAL = "EXPERIMENTAL"
 REFUSED = "REFUSED"
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class Drift:
     path: str
     local: str
     published: str
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class Verdict:
     state: str
     actual_id: str
@@ -45,25 +43,6 @@ class Verdict:
     @property
     def builds(self) -> bool:
         return self.state in (PINNED, EXPERIMENTAL)
-
-
-def _overlays_for(repo_root: Path, overlay_manifest: str, paths: set[str]) -> list[str]:
-    """Overlay names whose target project currently carries uncommitted content.
-
-    Derived from which target projects are dirty, not from verifying each patch
-    applied cleanly - that is `apply-build-patches.py`'s job and it owns its own
-    preconditions. Named accordingly so the ledger row is not read as a stronger
-    claim than it is.
-    """
-    declared = Path(overlay_manifest)
-    resolved = declared if declared.is_absolute() else repo_root / declared
-    with resolved.open() as fh:
-        manifest = yaml.safe_load(fh)
-    return sorted(
-        entry["name"]
-        for entry in manifest["patches"]
-        if entry["target_repo"] in paths
-    )
 
 
 def replayed_trees(lane: Lane) -> dict[str, str]:
@@ -86,79 +65,38 @@ def replayed_trees(lane: Lane) -> dict[str, str]:
 def evaluate(
     lane: Lane,
     toolchain: dict,
-    projects: list[Project],
-    repo_root: Path,
+    receipt: CompositionReceipt,
+    _repo_root: Path,
     require_expected: bool = True,
 ) -> Verdict:
-    states = identity.read_states(lane, projects)
     digest = identity.toolchain_digest(toolchain)
     base_oid = base_manifest_oid(lane)
-    replayed = replayed_trees(lane)
 
     actual_id = identity.fold(
-        [(s.project.path, s.effective_tree) for s in states],
+        [(project.path, project.effective_tree) for project in receipt.projects],
         base_oid,
         digest,
         lane.lunch,
     )
-    dirty_paths = [s.project.path for s in states if s.dirty]
-    overlays = _overlays_for(repo_root, toolchain["overlay_manifest"], set(dirty_paths))
+    dirty_paths = [project.path for project in receipt.projects if project.dirty]
+    dirty_set = set(dirty_paths)
+    overlays = sorted(
+        item.entry.name for item in receipt.selection if item.entry.target_repo in dirty_set
+    )
 
     # Expected trees come from the PUBLISHED commit, never from local HEAD.
     # Deriving them locally is cheaper and looks equivalent, but it makes the
     # expected id follow the tree wherever it goes, so it can never disagree -
     # which collapses it onto the actual id and lets an operator satisfy the
     # override by pasting back the value the tool just printed. Observed.
-    expected_entries = []
-    drift: list[Drift] = []
-    unresolved = False
-    try:
-        for state in states:
-            project = state.project
-            repo = lane.tree / project.path
-            if not project.governed:
-                expected_entries.append((project.path, identity.resolve(repo, "HEAD^{tree}")))
-                continue
-            if project.path in replayed:
-                want = replayed[project.path]
-                if state.effective_tree != want and not state.dirty:
-                    drift.append(Drift(project.path, state.effective_tree, want))
-                expected_entries.append((project.path, want))
-                continue
-            published = identity.published_head(project.remote_url, project.revision)
-            if state.head != published:
-                drift.append(Drift(project.path, state.head, published))
-            try:
-                expected_entries.append(
-                    (project.path, identity.resolve(repo, f"{published}^{{tree}}"))
-                )
-            except identity.IdentityError:
-                # The published commit is not in this clone yet, so its tree
-                # cannot be named without fetching. The drift row already
-                # carries both SHAs, which is what reconciliation needs.
-                unresolved = True
-    except identity.OfflineError as exc:
-        if require_expected:
-            raise
-        return Verdict(
-            state="UNKNOWN",
-            actual_id=actual_id,
-            expected_id=None,
-            dirty_paths=dirty_paths,
-            overlays=overlays,
-            offline_reason=str(exc),
-            states=states,
-            base_oid=base_oid,
-            toolchain_digest=digest,
-        )
-
-    expected_id = (
-        None if unresolved else identity.fold(expected_entries, base_oid, digest, lane.lunch)
+    expected_id = identity.fold(
+        [(project.path, project.expected_tree) for project in receipt.projects],
+        base_oid,
+        digest,
+        lane.lunch,
     )
-
-    if drift:
-        state = REFUSED
-    elif actual_id != expected_id:
+    drift: list[Drift] = []
+    if actual_id != expected_id:
         state = EXPERIMENTAL
     else:
         state = PINNED
@@ -170,7 +108,7 @@ def evaluate(
         drift=drift,
         dirty_paths=dirty_paths,
         overlays=overlays,
-        states=states,
+        states=list(receipt.projects),
         base_oid=base_oid,
         toolchain_digest=digest,
     )
@@ -203,7 +141,7 @@ def render(verdict: Verdict, lane: Lane) -> str:
             lines.append(f"      local     {row.local}")
             lines.append(f"      published {row.published}")
         lines.append("")
-        lines.append("reconcile, do not override: `rom %s sync`" % lane.name)
+        lines.append(f"reconcile, do not override: `rom {lane.name} sync`")
     if verdict.dirty_paths:
         lines.append("")
         lines.append("projects carrying uncommitted content:")

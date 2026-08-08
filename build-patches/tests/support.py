@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import os
-import shlex
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
+
+from support_utilities import (
+    added_payload_lines,  # noqa: F401
+    output_of,  # noqa: F401
+    replace_manifest,  # noqa: F401
+    set_git_executable,  # noqa: F401
+    write_git_wrapper,  # noqa: F401
+)
 
 OVERLAY_DIR = Path(__file__).resolve().parents[1]
 
@@ -198,7 +205,43 @@ def create_repo_root(root: Path) -> Path:
     for device in ("infiniti", "macan", "macanc", "fairlady"):
         fixtures[f"device/oneplus/{device}"] = device_files(device)
     for relative, files in fixtures.items():
-        initialize_repo(root / relative, files)
+        checkout = root / relative
+        initialize_repo(checkout, files)
+        run_command(["git", "config", "user.name", "Fixture"], cwd=checkout)
+        run_command(["git", "config", "user.email", "fixture@example.invalid"], cwd=checkout)
+        run_command(["git", "add", "."], cwd=checkout)
+        committed = run_command(["git", "commit", "-q", "-m", "fixture"], cwd=checkout)
+        if committed.returncode != 0:
+            raise RuntimeError(committed.stderr)
+    project_root = root / ".repo" / "projects"
+    project_root.mkdir(parents=True)
+    revisions: dict[str, str] = {}
+    for relative in sorted(fixtures):
+        checkout = root / relative
+        revisions[relative] = run_command(["git", "rev-parse", "HEAD"], cwd=checkout).stdout.strip()
+        project_git = project_root / f"{relative}.git"
+        project_git.parent.mkdir(parents=True, exist_ok=True)
+        project_git.symlink_to(checkout / ".git", target_is_directory=True)
+    ordered = sorted(fixtures)
+    (root / ".repo" / "project.list").write_text("\n".join(ordered) + "\n", encoding="utf-8")
+    rows = "\n".join(
+        f'  <project name="{path}" path="{path}" revision="{revisions[path]}" />'
+        for path in ordered
+    )
+    (root / ".repo" / "resolved.xml").write_text(
+        f"<manifest>\n{rows}\n</manifest>\n", encoding="utf-8"
+    )
+    repo_dir = root / ".repo" / "repo"
+    repo_dir.mkdir()
+    repo = repo_dir / "repo"
+    repo.write_text(
+        "#!/bin/sh\ncase \"$*\" in\n"
+        "  'list -p') cat .repo/project.list ;;\n"
+        "  'manifest -r') cat .repo/resolved.xml ;;\n"
+        "  *) exit 64 ;;\nesac\n",
+        encoding="utf-8",
+    )
+    repo.chmod(0o755)
     _assert_covers_manifest(fixtures)
     return root
 
@@ -241,88 +284,3 @@ def run_overlay(
     if environment is not None:
         process_environment.update(environment)
     return run_command(arguments, cwd=overlay, env=process_environment)
-
-
-def output_of(result: subprocess.CompletedProcess[str]) -> str:
-    return result.stdout + result.stderr
-
-
-def replace_manifest(overlay: Path, old: str, new: str) -> None:
-    manifest = overlay / "manifest.yml"
-    content = manifest.read_text(encoding="utf-8")
-    if old not in content:
-        raise AssertionError(f"manifest fixture does not contain {old!r}")
-    manifest.write_text(content.replace(old, new, 1), encoding="utf-8")
-
-
-def set_git_executable(overlay: Path, executable: Path) -> None:
-    runtime = overlay / "build_patch_runtime.py"
-    content = runtime.read_text(encoding="utf-8")
-    declaration = 'GIT_EXECUTABLE: Final = "/usr/bin/git"'
-    if declaration not in content:
-        raise AssertionError("overlay fixture does not contain the trusted Git declaration")
-    runtime.write_text(
-        content.replace(declaration, f'GIT_EXECUTABLE: Final = "{executable}"', 1),
-        encoding="utf-8",
-    )
-
-
-def added_payload_lines(patch_file: Path) -> list[str]:
-    return [
-        line[1:]
-        for line in patch_file.read_text(encoding="utf-8").splitlines()
-        if line.startswith("+") and not line.startswith("+++") and line[1:].strip() and not line[1:].lstrip().startswith("#")
-    ]
-
-
-def write_git_wrapper(directory: Path, target_root: Path, fault: str) -> Path:
-    wrapper = directory / "git"
-    real_git = shutil.which("git")
-    if real_git is None:
-        raise FileNotFoundError("git is not available")
-    fail_at = 2 if fault in {"apply", "rollback", "sigint"} else 0
-    fail_rollback = 1 if fault == "rollback" else 0
-    send_sigint = 1 if fault == "sigint" else 0
-    marker = directory / "unsafe-environment"
-    count_file = directory / "count"
-    resolved_target_root = target_root.resolve()
-    wrapper.write_text(
-        f"""#!/usr/bin/env bash
-set -eu
-if test "${{GIT_CONFIG_GLOBAL:-}}" != /dev/null || test -n "${{XDG_CONFIG_HOME:-}}"; then
-  touch {shlex.quote(str(marker))}
-fi
-is_apply=0
-is_check=0
-is_reverse=0
-for argument in "$@"; do
-  test "$argument" = "apply" && is_apply=1
-  test "$argument" = "--check" && is_check=1
-  test "$argument" = "--reverse" && is_reverse=1
-done
-case "$PWD/" in
-  {shlex.quote(str(resolved_target_root))}/*) in_target=1 ;;
-  *) in_target=0 ;;
-esac
-if test "$is_apply" = 1 && test "$is_check" = 0 && test "$in_target" = 1; then
-  count=0
-  test ! -f {shlex.quote(str(count_file))} || count="$(<{shlex.quote(str(count_file))})"
-  count=$((count + 1))
-  printf '%s' "$count" >{shlex.quote(str(count_file))}
-  if test "$is_reverse" = 1 && test {fail_rollback} = 1; then
-    exit 87
-  fi
-  if test "$count" = {fail_at}; then
-    if test {send_sigint} = 1; then
-      kill -INT "$PPID"
-      exit 130
-    fi
-    exit 86
-  fi
-fi
-exec {shlex.quote(real_git)} "$@"
-""",
-        encoding="utf-8",
-    )
-    wrapper.chmod(0o755)
-    return wrapper
