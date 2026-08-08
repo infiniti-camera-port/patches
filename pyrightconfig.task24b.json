@@ -17,11 +17,13 @@
     "rom/rom_ledger.py",
     "rom/rom_monitor.py",
     "rom/rom_runtime.py",
+    "rom/rom_status_io.py",
     "rom/tests/test_composition_overlay.py",
     "rom/tests/test_ledger.py",
     "rom/tests/test_runtime.py",
     "rom/tests/test_runtime_boundaries.py",
     "rom/tests/test_runtime_notification.py",
+    "rom/tests/test_runtime_persistence.py",
     "rom/tests/test_runtime_unexpected.py",
     "rom/tests/test_runtime_writer.py"
   ],

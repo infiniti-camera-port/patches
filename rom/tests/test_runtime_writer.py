@@ -232,3 +232,65 @@ def test_signal_terminalization_records_once_before_failing_notification(
     assert final["detail"] == f"signal-{signal.SIGTERM}"
     assert "notify down" in str(final["secondary_error"])
     assert outcomes(ledger_root) == ["INTERRUPTED"]
+
+
+def test_signal_total_terminal_storage_failure_preserves_interrupt_row(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # Given SIGTERM arrives while every terminal persistence route is unavailable.
+    lane, verdict, ledger_root = fixture(tmp_path)
+    handlers: dict[int, SignalHandler] = {}
+    original_write = rom_runtime.monitor.StatusWriter.write
+    original_snapshot = rom_runtime.monitor.write_status_snapshot
+
+    def capture_handler(number: int, handler: SignalHandler) -> signal.Handlers:
+        handlers[number] = handler
+        return signal.SIG_DFL
+
+    def interrupt_stream(_request) -> Never:
+        handler = handlers[signal.SIGTERM]
+        handler(signal.SIGTERM, None)
+        raise AssertionError("signal handler returned")
+
+    def stop_process(code: int) -> Never:
+        raise ExitCalled(code)
+
+    def fail_terminal(self, fields, *args, **kwargs) -> None:
+        if fields["state"] != "RUNNING":
+            raise OSError("terminal writer down")
+        original_write(self, fields, *args, **kwargs)
+
+    def fail_snapshot(status_file, fields, *args, **kwargs):
+        if fields["state"] != "RUNNING":
+            raise OSError("snapshot down")
+        return original_snapshot(status_file, fields, *args, **kwargs)
+
+    def fail_fallback(*_args, **_kwargs):
+        raise OSError("fallback down")
+
+    monkeypatch.setattr(rom_runtime.signal, "signal", capture_handler)
+    monkeypatch.setattr(rom_runtime.monitor, "stream_process", interrupt_stream)
+    monkeypatch.setattr(rom_runtime.os, "_exit", stop_process)
+    monkeypatch.setattr(rom_runtime.monitor.StatusWriter, "write", fail_terminal)
+    monkeypatch.setattr(rom_runtime.monitor, "write_status_snapshot", fail_snapshot)
+    monkeypatch.setattr(rom_runtime.monitor, "write_terminal_fallback", fail_fallback)
+
+    # When signal terminalization fails closed through the ledger.
+    with pytest.raises(ExitCalled, match="130"):
+        rom_runtime.execute_build(
+            rom_runtime.BuildOptions("bacon", None, None),
+            lane,
+            {
+                "ledger": str(ledger_root),
+                "monitoring": {},
+                "ccache": "/tmp/cache",
+                "image": "unused",
+            },
+            verdict,
+            tmp_path,
+        )
+
+    # Then the stale snapshots are gone and the sole row preserves interruption.
+    assert not lane.status_file.exists()
+    assert not lane.status_file.with_name("STATUS.json").exists()
+    assert outcomes(ledger_root) == ["INTERRUPTED"]

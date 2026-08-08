@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import signal
@@ -23,6 +22,7 @@ from rom_notify import EventId, Notifier, NotifyEvent, load_notifier
 
 GIB: Final = 1 << 30
 LEDGER_WRITE_FAILED: Final = 74
+STATUS_WRITE_FAILED: Final = 75
 
 
 class TerminalStatusError(RuntimeError):
@@ -246,24 +246,66 @@ def execute_build(
                         f"status-snapshot: {type(snapshot_exc).__name__}: {snapshot_exc}"
                     )
                     try:
-                        clean_tail = monitor.bounded_tail(tail)
-                        document: dict[str, monitor.Scalar | list[str]] = dict(fields)
-                        document["tail"] = clean_tail
-                        document["updated"] = monitor.utc_now()
-                        document["heartbeat"] = monitor.utc_now()
-                        writer.status_file.parent.mkdir(parents=True, exist_ok=True)
-                        flat = " ".join(
-                            f"{key}={str(value).replace(' ', '_')}"
-                            for key, value in fields.items()
-                        )
-                        writer.status_file.write_text(f"{flat}\n")
-                        writer.json_file.write_text(
-                            json.dumps(document, sort_keys=True) + "\n"
+                        writer.last_fields = monitor.write_terminal_fallback(
+                            writer.status_file,
+                            writer.event_file,
+                            fields,
+                            writer.last_fields.get("state", "-"),
+                            tail,
                         )
                     except (OSError, RuntimeError, TypeError, ValueError) as emergency_exc:
+                        add_secondary(
+                            f"status-emergency: {type(emergency_exc).__name__}: {emergency_exc}"
+                        )
                         raise TerminalStatusError(
                             f"cannot persist terminal status: {emergency_exc}"
                         ) from emergency_exc
+
+    def remove_stale_snapshots() -> None:
+        for stale in (writer.status_file, writer.json_file):
+            try:
+                stale.unlink(missing_ok=True)
+            except OSError as exc:
+                add_secondary(f"status-remove: {type(exc).__name__}: {exc}")
+
+    def record_status_failure(
+        primary_state: str,
+        primary_returncode: int,
+        primary_detail: str,
+        first_error: str,
+        artifact_sha256: str = "-",
+        artifact_dest: str = "-",
+    ) -> int:
+        nonlocal terminalized
+        fields.update(
+            primary_state=primary_state,
+            primary_returncode=primary_returncode,
+            primary_detail=primary_detail,
+            status_persistence="FAILED",
+        )
+        outcome = primary_state
+        returncode = primary_returncode
+        if primary_returncode == 0:
+            outcome = "STATUS_WRITE_FAILED"
+            returncode = STATUS_WRITE_FAILED
+            fields.update(state=outcome, detail="status-write-failed-after-success")
+        remove_stale_snapshots()
+        secondary = str(fields.get("secondary_error", "terminal status unavailable"))
+        combined_error = (
+            f"primary {primary_state} rc={primary_returncode} detail={primary_detail}; "
+            f"{first_error}; status persistence failed: {secondary}"
+        )[:200]
+        ledger_error = record_attempt(
+            builds.ledger_paths(toolchain, repo_root), lane, verdict, options.goal, outcome,
+            cls=build_class, first_error=combined_error, artifact_sha256=artifact_sha256,
+            artifact_dest=artifact_dest, run_id=run_id, started_utc=started_utc,
+            finished_utc=monitor.utc_now(), seconds=int(time.monotonic() - started_monotonic),
+            phase_seconds=observer.finish_phase(),
+        )
+        if ledger_error is not None:
+            add_secondary(ledger_error)
+        terminalized = True
+        return returncode
 
     try:
         notifier = load_notifier(Path(__file__).with_name("notify.local.json"))
@@ -275,24 +317,23 @@ def execute_build(
     except (OSError, RuntimeError, TypeError, ValueError) as exc:
         fields.update(state="FAILED", detail=f"status-start-error-{type(exc).__name__}")
         add_secondary(f"status-start: {type(exc).__name__}: {exc}")
+        notify_terminal("FAILED", (str(exc),), "-", "-", 4)
+        try:
+            write_terminal((str(exc),))
+        except TerminalStatusError:
+            return record_status_failure(
+                "FAILED", 4, str(fields["detail"]), str(exc)[:200]
+            )
         ledger_error = record_attempt(
-            builds.ledger_paths(toolchain, repo_root),
-            lane,
-            verdict,
-            options.goal,
-            "FAILED",
-            cls=build_class,
-            first_error=str(exc)[:200],
-            run_id=run_id,
-            started_utc=started_utc,
-            finished_utc=monitor.utc_now(),
+            builds.ledger_paths(toolchain, repo_root), lane, verdict, options.goal, "FAILED",
+            cls=build_class, first_error=str(exc)[:200], run_id=run_id,
+            started_utc=started_utc, finished_utc=monitor.utc_now(),
             seconds=int(time.monotonic() - started_monotonic),
             phase_seconds=observer.finish_phase(),
         )
         if ledger_error is not None:
             add_secondary(ledger_error)
-        notify_terminal("FAILED", (str(exc),), "-", "-", 4)
-        write_terminal((str(exc),))
+            write_terminal((str(exc),))
         terminalized = True
         return 4
 
@@ -304,6 +345,14 @@ def execute_build(
             except ProcessLookupError:
                 observer.child_pid = 0
         fields.update(state="INTERRUPTED", detail=f"signal-{signum}")
+        notify_terminal("INTERRUPTED", observer.last_tail, "-", "-", 130)
+        try:
+            write_terminal(observer.last_tail)
+        except TerminalStatusError:
+            record_status_failure(
+                "INTERRUPTED", 130, str(fields["detail"]), f"signal {signum}"
+            )
+            os._exit(130)
         ledger_error = record_attempt(
             builds.ledger_paths(toolchain, repo_root), lane, verdict, options.goal,
             "INTERRUPTED", cls=build_class, first_error=f"signal {signum}",
@@ -312,8 +361,7 @@ def execute_build(
         )
         if ledger_error is not None:
             add_secondary(ledger_error)
-        notify_terminal("INTERRUPTED", observer.last_tail, "-", "-", 130)
-        write_terminal(observer.last_tail)
+            write_terminal(observer.last_tail)
         terminalized = True
         os._exit(130)
 
@@ -357,6 +405,17 @@ def execute_build(
             (line[:200] for line in reversed(lines) if any(token in line for token in triggers)), "-"
         )
         elapsed = int(time.monotonic() - started_monotonic)
+        fields.update(
+            state=state, root_owned=strays, artifact_source=artifact_source,
+            artifact_dest=artifact_dest, artifact_sha256=digest,
+        )
+        notify_terminal(state, lines, artifact_source, artifact_dest, returncode)
+        try:
+            write_terminal(monitor.bounded_tail(lines))
+        except TerminalStatusError:
+            return record_status_failure(
+                state, returncode, str(fields["detail"]), first_error, digest, artifact_dest
+            )
         ledger_error = record_attempt(
             builds.ledger_paths(toolchain, repo_root), lane, verdict, options.goal, state,
             cls=build_class, first_error=first_error, artifact_sha256=digest,
@@ -369,13 +428,8 @@ def execute_build(
             if returncode == 0:
                 returncode = LEDGER_WRITE_FAILED
                 state = "LEDGER_WRITE_FAILED"
-                fields["detail"] = "ledger-write-failed"
-        fields.update(
-            state=state, root_owned=strays, artifact_source=artifact_source,
-            artifact_dest=artifact_dest, artifact_sha256=digest,
-        )
-        notify_terminal(state, lines, artifact_source, artifact_dest, returncode)
-        write_terminal(monitor.bounded_tail(lines))
+                fields.update(state=state, detail="ledger-write-failed")
+            write_terminal(monitor.bounded_tail(lines))
         terminalized = True
         print(f"build finished rc={returncode} log={log}")
         return returncode
@@ -390,6 +444,13 @@ def execute_build(
         if isinstance(exc, TerminalStatusError):
             raise
         fields.update(state="FAILED", detail=f"monitor-error-{type(exc).__name__}")
+        notify_terminal("FAILED", lines or (str(exc),), "-", "-", 4)
+        try:
+            write_terminal(lines)
+        except TerminalStatusError:
+            return record_status_failure(
+                "FAILED", 4, str(fields["detail"]), str(exc)[:200]
+            )
         ledger_error = record_attempt(
             builds.ledger_paths(toolchain, repo_root), lane, verdict, options.goal, "FAILED",
             cls=build_class, first_error=str(exc)[:200], run_id=run_id,
@@ -399,22 +460,24 @@ def execute_build(
         )
         if ledger_error is not None:
             add_secondary(ledger_error)
-        notify_terminal("FAILED", lines or (str(exc),), "-", "-", 4)
-        write_terminal(lines)
+            write_terminal(lines)
         terminalized = True
         return 4
     finally:
         if not terminalized:
             if not ledger_attempted:
-                fields.update(state="FAILED", detail="unfinalized-attempt")
+                recorded_state = str(fields.get("state", "RUNNING"))
+                if recorded_state == "RUNNING":
+                    recorded_state = "FAILED"
+                    fields.update(state=recorded_state, detail="unfinalized-attempt")
                 ledger_error = record_attempt(
                     builds.ledger_paths(toolchain, repo_root),
                     lane,
                     verdict,
                     options.goal,
-                    "FAILED",
+                    recorded_state,
                     cls=build_class,
-                    first_error="unfinalized attempt",
+                    first_error=f"unfinalized after {fields.get('detail', '-')}",
                     run_id=run_id,
                     started_utc=started_utc,
                     finished_utc=monitor.utc_now(),
@@ -423,4 +486,7 @@ def execute_build(
                 )
                 if ledger_error is not None:
                     add_secondary(ledger_error)
-            write_terminal(lines)
+            try:
+                write_terminal(lines)
+            except TerminalStatusError:
+                remove_stale_snapshots()

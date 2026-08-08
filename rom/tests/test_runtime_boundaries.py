@@ -63,6 +63,11 @@ def ledger_outcomes(ledger_root: Path) -> list[str]:
     return [row["outcome"] for row in rom_runtime.builds.ledger.read_rows(paths)]
 
 
+def event_states(lane: FakeLane) -> list[str]:
+    path = lane.status_file.parent / f"{lane.name}-events.jsonl"
+    return [json.loads(line)["state"] for line in path.read_text().splitlines()]
+
+
 @pytest.mark.parametrize(
     "load_fault",
     [OSError("load down"), NotifierLoadError("load down")],
@@ -198,3 +203,4 @@ def test_emergency_terminal_snapshot_prevents_stale_running_success(
     assert final["detail"] == "rc-0"
     assert "snapshot down" in str(final["secondary_error"])
     assert ledger_outcomes(ledger_root) == ["SUCCESS"]
+    assert event_states(lane)[-1] == "SUCCESS"

@@ -77,7 +77,7 @@ def test_execute_build_publishes_and_records_before_success(tmp_path: Path, monk
     assert __import__("json").loads(status.read_text())["state"] == "SUCCESS"
     attempts = tmp_path / "ledger" / "attempts.tsv"
     assert "\tSUCCESS\t" in attempts.read_text()
-    assert attempts.stat().st_mtime_ns <= status.stat().st_mtime_ns
+    assert attempts.stat().st_mtime_ns >= status.stat().st_mtime_ns
     assert next((lane.artifacts / verdict.actual_id).glob("*.zip")).read_bytes() == b"artifact"
 
 

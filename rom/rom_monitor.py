@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import json
 import os
 import re
@@ -15,8 +14,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, NewType, Protocol
 
+from rom_status_io import Scalar, append_transition
+from rom_status_io import write_status_snapshot as _write_status_snapshot
+from rom_status_io import write_terminal_fallback as _write_terminal_fallback
+
 RunId = NewType("RunId", str)
-Scalar = str | int | float | bool | None
 
 ANSI_RE: Final = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 CONTROL_RE: Final = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
@@ -60,34 +62,24 @@ def error_excerpt(lines: Sequence[str]) -> list[str]:
     return bounded_tail(lines)
 
 
-def _atomic_write(path: Path, payload: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    with temporary.open("wb") as handle:
-        handle.write(payload)
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(temporary, path)
-
-
 def write_status_snapshot(
     status_file: Path,
     fields: Mapping[str, Scalar],
     tail: Sequence[str] = (),
 ) -> dict[str, Scalar]:
-    clean_tail = bounded_tail(tail)
-    merged = dict(fields)
-    merged["heartbeat"] = str(merged.get("heartbeat") or utc_now())
-    merged["updated"] = str(merged.get("updated") or utc_now())
-    tail_bytes = "\n".join(clean_tail).encode()
-    merged["tail64"] = base64.urlsafe_b64encode(tail_bytes).decode().rstrip("=") or "-"
-    flat = " ".join(f"{key}={str(value).replace(' ', '_')}" for key, value in merged.items())
-    _atomic_write(status_file, f"{flat}\n".encode())
-    document: dict[str, Scalar | list[str]] = dict(merged)
-    document["tail"] = clean_tail
-    json_file = status_file.with_name(f"{status_file.name}.json")
-    _atomic_write(json_file, (json.dumps(document, sort_keys=True) + "\n").encode())
-    return merged
+    return _write_status_snapshot(status_file, fields, bounded_tail(tail), utc_now())
+
+
+def write_terminal_fallback(
+    status_file: Path,
+    event_file: Path,
+    fields: Mapping[str, Scalar],
+    previous_state: Scalar,
+    tail: Sequence[str] = (),
+) -> dict[str, Scalar]:
+    return _write_terminal_fallback(
+        status_file, event_file, fields, previous_state, bounded_tail(tail), utc_now()
+    )
 
 
 class StatusWriter:
@@ -109,13 +101,12 @@ class StatusWriter:
         clean_tail = bounded_tail(tail)
         merged = write_status_snapshot(self.status_file, fields, clean_tail)
         if transition:
-            document: dict[str, Scalar | list[str]] = dict(merged)
-            document["tail"] = clean_tail
-            event = dict(document)
-            event["previous_state"] = self.last_fields.get("state", "-")
-            self.event_file.parent.mkdir(parents=True, exist_ok=True)
-            with self.event_file.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(event, sort_keys=True) + "\n")
+            append_transition(
+                self.event_file,
+                merged,
+                clean_tail,
+                self.last_fields.get("state", "-"),
+            )
         self.last_fields = merged
 
     def read(self) -> dict[str, Scalar | list[str]]:
@@ -132,8 +123,8 @@ class Progress:
     native_eta: str | None = None
 
 
-@dataclass(slots=True)  # noqa: MUTABLE_OK - streaming parser is an accumulator
-class ProgressParser:  # noqa: MUTABLE_OK
+@dataclass(slots=True)  # noqa: RUF100  # noqa: MUTABLE_OK - streaming parser is an accumulator
+class ProgressParser:
     """Mutable accumulator for one process's line-oriented progress."""
 
     phase: str = "STARTING"
