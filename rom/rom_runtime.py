@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import signal
@@ -226,14 +227,42 @@ def execute_build(
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
             add_secondary(f"notify: {type(exc).__name__}: {exc}")
 
+    def terminal_bundle_matches() -> bool:
+        expected_state = str(fields["state"])
+        expected_run = str(fields["run"])
+        try:
+            flat = writer.status_file.read_text()
+            document = json.loads(writer.json_file.read_text())
+            event_lines = writer.event_file.read_text().splitlines()
+            if not event_lines:
+                return False
+            event = json.loads(event_lines[-1])
+        except (OSError, TypeError, ValueError):
+            return False
+        flat_fields = dict(token.split("=", 1) for token in flat.split() if "=" in token)
+        return (
+            flat_fields.get("state") == expected_state
+            and flat_fields.get("run") == expected_run
+            and document.get("state") == expected_state
+            and document.get("run") == expected_run
+            and event.get("state") == expected_state
+            and event.get("run") == expected_run
+        )
+
     def write_terminal(tail: Sequence[str]) -> None:
         try:
             writer.write(fields, tail, transition=True)
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            if terminal_bundle_matches():
+                writer.last_fields = dict(fields)
+                return
             add_secondary(f"status: {type(exc).__name__}: {exc}")
             try:
                 writer.write(fields, tail, transition=True)
             except (OSError, RuntimeError, TypeError, ValueError) as retry_exc:
+                if terminal_bundle_matches():
+                    writer.last_fields = dict(fields)
+                    return
                 add_secondary(f"status-retry: {type(retry_exc).__name__}: {retry_exc}")
                 try:
                     writer.last_fields = monitor.write_status_snapshot(
@@ -242,6 +271,9 @@ def execute_build(
                         tail,
                     )
                 except (OSError, RuntimeError, TypeError, ValueError) as snapshot_exc:
+                    if terminal_bundle_matches():
+                        writer.last_fields = dict(fields)
+                        return
                     add_secondary(
                         f"status-snapshot: {type(snapshot_exc).__name__}: {snapshot_exc}"
                     )
@@ -254,6 +286,9 @@ def execute_build(
                             tail,
                         )
                     except (OSError, RuntimeError, TypeError, ValueError) as emergency_exc:
+                        if terminal_bundle_matches():
+                            writer.last_fields = dict(fields)
+                            return
                         add_secondary(
                             f"status-emergency: {type(emergency_exc).__name__}: {emergency_exc}"
                         )

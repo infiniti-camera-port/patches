@@ -9,6 +9,14 @@ from pathlib import Path
 Scalar = str | int | float | bool | None
 
 
+def _fsync_parent(path: Path) -> None:
+    directory = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
 def _atomic_write(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
@@ -17,6 +25,7 @@ def _atomic_write(path: Path, payload: bytes) -> None:
         handle.flush()
         os.fsync(handle.fileno())
     os.replace(temporary, path)
+    _fsync_parent(path)
 
 
 def _snapshot_payload(
@@ -48,6 +57,7 @@ def append_transition(
         handle.write(json.dumps(event, sort_keys=True) + "\n")
         handle.flush()
         os.fsync(handle.fileno())
+    _fsync_parent(event_file)
 
 
 def write_status_snapshot(

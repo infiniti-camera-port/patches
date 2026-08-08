@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import rom_runtime
+import rom_status_io
 from build_composition import ResolvedProject
 
 
@@ -141,3 +142,37 @@ def test_total_terminal_storage_failure_uses_authoritative_ledger(
     assert [row["outcome"] for row in recorded] == [expected_outcome]
     assert "status persistence failed" in recorded[0]["first_error"]
     assert f"primary {'SUCCESS' if case == 'success' else 'FAILED'} rc=" in recorded[0]["first_error"]
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_rc", "expected_state"),
+    [("setup", 4, "FAILED"), ("failed-child", 23, "FAILED"), ("success", 0, "SUCCESS")],
+)
+def test_post_fsync_event_exception_accepts_matching_durable_bundle(
+    tmp_path: Path, monkeypatch, case: str, expected_rc: int, expected_state: str
+) -> None:
+    # Given the event append and fsync complete before its caller receives an exception.
+    lane, verdict, ledger_root = fixture(tmp_path)
+    fail_primary_paths(monkeypatch)
+    original_append = rom_status_io.append_transition
+
+    def append_then_fail(*args, **kwargs) -> None:
+        original_append(*args, **kwargs)
+        raise OSError("event acknowledgement lost")
+
+    monkeypatch.setattr(rom_status_io, "append_transition", append_then_fail)
+    install_child(monkeypatch, lane, case)
+
+    # When terminal persistence verifies the side effects after the exception.
+    returncode = rom_runtime.execute_build(
+        rom_runtime.BuildOptions("bacon", None, None), lane,
+        {"ledger": str(ledger_root), "monitoring": {}, "image": "unused"}, verdict, tmp_path,
+    )
+
+    # Then it accepts the matching bundle without manufacturing a persistence failure.
+    final = json.loads(lane.status_file.with_name("STATUS.json").read_text())
+    events = lane.status_file.parent / f"{lane.name}-events.jsonl"
+    assert returncode == expected_rc
+    assert final["state"] == expected_state
+    assert json.loads(events.read_text().splitlines()[-1])["state"] == expected_state
+    assert [row["outcome"] for row in rows(ledger_root)] == [expected_state]
