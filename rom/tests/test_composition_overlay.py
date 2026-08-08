@@ -16,6 +16,7 @@ INFINITI_PATHS = (
     "external/google-highway",
     "external/skia",
     "packages/apps/Settings",
+    "prebuilts/build-tools",
 )
 FULL_PATHS = INFINITI_PATHS + (
     "device/oneplus/fairlady",
@@ -37,6 +38,7 @@ TARGETS = {
     "packages/apps/Settings": (
         "src/com/android/settings/dashboard/CategoryManager.java",
     ),
+    "prebuilts/build-tools": (),
 }
 
 
@@ -59,6 +61,12 @@ def _composition(tmp_path: Path, paths: tuple[str, ...]) -> Path:
             file_path = checkout / target
             file_path.parent.mkdir(parents=True, exist_ok=True)
             file_path.write_text(f"fixture for {path}/{target}\n", encoding="utf-8")
+        if path == "prebuilts/build-tools":
+            for platform in ("darwin-x86", "linux-arm64", "linux-x86"):
+                for tool in ("date", "tar"):
+                    link = checkout / "path" / platform / tool
+                    link.parent.mkdir(parents=True, exist_ok=True)
+                    link.symlink_to(f"../../{platform}/bin/toybox")
         _run(checkout, ["git", "init", "-q"])
         _run(checkout, ["git", "config", "user.name", "Fixture"])
         _run(checkout, ["git", "config", "user.email", "fixture@example.invalid"])
@@ -111,14 +119,43 @@ def test_infiniti_and_full_compositions_select_canonical_subsets(
 ) -> None:
     _, infiniti = _receipt(tmp_path / "infiniti", monkeypatch, INFINITI_PATHS)
     _, full = _receipt(tmp_path / "full", monkeypatch, FULL_PATHS)
-    assert len(infiniti.projects) == 6
-    assert len(infiniti.registry) == 10
-    assert len(infiniti.selection) == 7
-    assert len({item.entry.target_repo for item in infiniti.selection}) == 6
-    assert len(full.projects) == 9
-    assert len(full.registry) == 10
-    assert len(full.selection) == 10
-    assert len({item.entry.target_repo for item in full.selection}) == 9
+    assert len(infiniti.projects) == 7
+    assert len(infiniti.registry) == 11
+    assert len(infiniti.selection) == 8
+    assert len({item.entry.target_repo for item in infiniti.selection}) == 7
+    assert len(full.projects) == 10
+    assert len(full.registry) == 11
+    assert len(full.selection) == 11
+    assert len({item.entry.target_repo for item in full.selection}) == 10
+
+
+def test_features_v2_fold_changes_only_for_declared_build_tools_operation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Given the full features-v2 composition before its declared link deletion.
+    root, before = _receipt(tmp_path, monkeypatch, FULL_PATHS)
+    operation = next(
+        item for item in before.selection if item.entry.name == "remove-broken-build-tools"
+    )
+
+    # When exactly that one logical payload is applied.
+    subprocess.run(
+        ["git", "-C", str(root / operation.entry.target_repo), "apply", "-"],
+        input=operation.patch_bytes,
+        capture_output=True,
+        check=True,
+    )
+    after = compose(root, PATCH_ROOT, PATCH_ROOT / "manifest.yml")
+
+    # Then only the named target repository contributes a changed effective tree.
+    before_trees = {project.path: project.effective_tree for project in before.projects}
+    after_trees = {project.path: project.effective_tree for project in after.projects}
+    assert {path for path in before_trees if before_trees[path] != after_trees[path]} == {
+        "prebuilts/build-tools"
+    }
+    assert [project.path for project in after.projects if project.dirty] == [
+        "prebuilts/build-tools"
+    ]
 
 
 def test_cross_surface_mismatch_fails_closed(

@@ -1,5 +1,7 @@
+# noqa: RUF100  # noqa: SIZE_OK - apply and recovery share one CAS state machine.
 from __future__ import annotations
 
+import os
 import signal
 import stat
 from pathlib import Path
@@ -38,7 +40,27 @@ def verify_patch_state(
 ) -> str:
     if not paths_are_current(item.resolved):
         return "repository or target path changed"
-    if not _matches(item.resolved.target_file, data, mode):
+    if item.members:
+        for member in item.members:
+            try:
+                metadata = member.path.lstat()
+            except FileNotFoundError:
+                if not applied:
+                    return f"missing vector member {member.path}"
+                continue
+            except OSError as exc:
+                return f"{type(exc).__name__} while inspecting vector member: {exc}"
+            if applied:
+                return f"unexpected vector member {member.path}"
+            if not stat.S_ISLNK(metadata.st_mode):
+                return f"vector member is not a symlink {member.path}"
+            try:
+                target = os.readlink(member.path)
+            except OSError as exc:
+                return f"{type(exc).__name__} while reading vector member: {exc}"
+            if target != member.target or stat.S_IFMT(metadata.st_mode) != member.mode:
+                return f"vector member target or mode changed {member.path}"
+    elif not _matches(item.resolved.target_file, data, mode):
         return "concurrent target content or mode change"
     try:
         forward = git.apply_check(item.resolved.repo_path, item.resolved.patch_bytes)
@@ -84,6 +106,37 @@ def _rollback(
     return not failures, "; ".join(failures)
 
 
+def _restore_active_vector(item: PreparedPatch, git: GitOperations) -> str:
+    failures: list[str] = []
+    for member in item.members:
+        try:
+            metadata = member.path.lstat()
+        except FileNotFoundError:
+            try:
+                member.path.parent.mkdir(parents=True, exist_ok=True)
+                member.path.symlink_to(member.target)
+            except (OSError, KeyboardInterrupt, SystemExit) as exc:
+                failures.append(f"{member.path}: {type(exc).__name__}: {exc}")
+            continue
+        except OSError as exc:
+            failures.append(f"{member.path}: {type(exc).__name__}: {exc}")
+            continue
+        if not stat.S_ISLNK(metadata.st_mode):
+            failures.append(f"{member.path}: manual recovery required for non-symlink")
+            continue
+        try:
+            target = os.readlink(member.path)
+        except OSError as exc:
+            failures.append(f"{member.path}: {type(exc).__name__}: {exc}")
+            continue
+        if target != member.target or stat.S_IFMT(metadata.st_mode) != member.mode:
+            failures.append(f"{member.path}: manual recovery required for changed symlink")
+    if failures:
+        return "; ".join(failures)
+    state = verify_patch_state(item, git, item.before, item.before_mode, applied=False)
+    return "" if not state else f"vector recovery verification failed: {state}"
+
+
 def _recover(
     primary: str,
     prepared_applied: list[PreparedPatch],
@@ -103,7 +156,13 @@ def _recover(
             before_state = verify_patch_state(
                 active, git, active.before, active.before_mode, applied=False
             )
-            if before_state:
+            if before_state and active.members:
+                vector_error = _restore_active_vector(active, git)
+                if vector_error:
+                    cleanup_failures.append(
+                        f"{active.resolved.entry.name}: {vector_error}"
+                    )
+            elif before_state:
                 cleanup_failures.append(
                     f"{active.resolved.entry.name}: active state is ambiguous: applied={applied_state}; unapplied={before_state}"
                 )

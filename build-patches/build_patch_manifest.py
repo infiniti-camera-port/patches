@@ -1,3 +1,4 @@
+# noqa: RUF100  # noqa: SIZE_OK - manifest parsing and path resolution are one trust boundary.
 from __future__ import annotations
 
 import re
@@ -18,6 +19,7 @@ REQUIRED_PATCHES: Final = frozenset(
         "device-not-debuggable-macan",
         "device-not-debuggable-macanc",
         "device-not-debuggable-fairlady",
+        "remove-broken-build-tools",
     }
 )
 REQUIRED_MANIFEST_KEYS: Final = frozenset(
@@ -26,7 +28,10 @@ REQUIRED_MANIFEST_KEYS: Final = frozenset(
 SOURCE_GUARD_KEYS: Final = frozenset(
     {"expected_head", "expected_base_sha256", "expected_applied_sha256"}
 )
-MANIFEST_KEYS: Final = REQUIRED_MANIFEST_KEYS | SOURCE_GUARD_KEYS
+MANIFEST_KEYS: Final = REQUIRED_MANIFEST_KEYS | SOURCE_GUARD_KEYS | {
+    "operation_kind",
+    "members",
+}
 NAME_PATTERN: Final = re.compile(r"[a-z0-9][a-z0-9-]*\Z")
 SHA256_PATTERN: Final = re.compile(r"[0-9a-f]{64}\Z")
 COMMIT_PATTERN: Final = re.compile(r"[0-9a-f]{40}\Z")
@@ -41,6 +46,12 @@ class ManifestError(Exception):
         return self.message
 
 
+class SymlinkMember(NamedTuple):
+    path: str
+    target: str
+    mode: int
+
+
 class BuildPatch(NamedTuple):
     name: str
     target_repo: str
@@ -51,6 +62,8 @@ class BuildPatch(NamedTuple):
     expected_head: str | None = None
     expected_base_sha256: str | None = None
     expected_applied_sha256: str | None = None
+    operation_kind: str = "regular-text-v1"
+    members: tuple[SymlinkMember, ...] = ()
 
 
 class ResolvedPatch(NamedTuple):
@@ -58,6 +71,7 @@ class ResolvedPatch(NamedTuple):
     patch_bytes: bytes
     repo_path: Path
     target_file: Path
+    member_files: tuple[Path, ...] = ()
 
 
 class ValidatedPatch(NamedTuple):
@@ -97,6 +111,31 @@ def _parse_relative(value: str, field: str, index: int) -> str:
     return value
 
 
+def _parse_members(raw: str, index: int) -> tuple[SymlinkMember, ...]:
+    if not raw:
+        return ()
+    parsed: list[SymlinkMember] = []
+    for encoded in raw.split(";"):
+        fields = encoded.split("|")
+        if len(fields) != 3:
+            raise ManifestError(f"entry {index}: malformed symlink member")
+        path, target, raw_mode = fields
+        safe_path = _parse_relative(path, "member path", index)
+        if not target or "\0" in target or "\n" in target:
+            raise ManifestError(f"entry {index}: malformed symlink target")
+        try:
+            mode = int(raw_mode, 8)
+        except ValueError as exc:
+            raise ManifestError(f"entry {index}: malformed symlink mode") from exc
+        if mode != 0o120000:
+            raise ManifestError(f"entry {index}: symlink member mode must be 120000")
+        parsed.append(SymlinkMember(safe_path, target, mode))
+    paths = [member.path for member in parsed]
+    if len(paths) != len(set(paths)):
+        raise ManifestError(f"entry {index}: duplicate symlink member path")
+    return tuple(parsed)
+
+
 def _build_entry(raw_entry: Mapping[str, str], index: int) -> BuildPatch:
     missing = REQUIRED_MANIFEST_KEYS - raw_entry.keys()
     if missing:
@@ -125,6 +164,14 @@ def _build_entry(raw_entry: Mapping[str, str], index: int) -> BuildPatch:
     source_hashes = (expected_base_sha256, expected_applied_sha256)
     if any(value is not None and SHA256_PATTERN.fullmatch(value) is None for value in source_hashes):
         raise ManifestError(f"entry {index}: source hashes must be lowercase 64-character digests")
+    operation_kind = raw_entry.get("operation_kind", "regular-text-v1")
+    members = _parse_members(raw_entry.get("members", ""), index)
+    if operation_kind not in {"regular-text-v1", "symlink-delete-set-v1"}:
+        raise ManifestError(f"entry {index}: unsupported operation_kind {operation_kind!r}")
+    if operation_kind == "symlink-delete-set-v1" and not members:
+        raise ManifestError(f"entry {index}: symlink-delete-set-v1 requires members")
+    if operation_kind == "regular-text-v1" and members:
+        raise ManifestError(f"entry {index}: regular-text-v1 forbids members")
     return BuildPatch(
         name=name,
         target_repo=_parse_relative(raw_entry["target_repo"], "target_repo", index),
@@ -135,6 +182,8 @@ def _build_entry(raw_entry: Mapping[str, str], index: int) -> BuildPatch:
         expected_head=expected_head,
         expected_base_sha256=expected_base_sha256,
         expected_applied_sha256=expected_applied_sha256,
+        operation_kind=operation_kind,
+        members=members,
     )
 
 
@@ -201,6 +250,27 @@ def _walk_existing(root: Path, relative: str, label: str) -> Path:
     return current
 
 
+def _walk_optional_directories(root: Path, relative: str, label: str) -> Path:
+    current = root
+    missing = False
+    for component in PurePosixPath(relative).parts:
+        current = current / component
+        if missing:
+            continue
+        try:
+            metadata = current.lstat()
+        except FileNotFoundError:
+            missing = True
+            continue
+        except OSError as exc:
+            raise ManifestError(f"{label} cannot be inspected: {current}") from exc
+        if stat.S_ISLNK(metadata.st_mode):
+            raise ManifestError(f"{label} contains symlink component: {current}")
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise ManifestError(f"{label} contains non-directory component: {current}")
+    return current
+
+
 def _regular_file(path: Path, label: str) -> None:
     try:
         metadata = path.lstat()
@@ -226,37 +296,69 @@ def select_registry(
         repo_path = _walk_existing(root, entry.target_repo, f"{entry.name}: target_repo")
         if not repo_path.is_dir():
             raise ManifestError(f"{entry.name}: target_repo is not a directory: {repo_path}")
-        target_file = _walk_existing(repo_path, entry.target_path, f"{entry.name}: target_path")
-        _regular_file(target_file, f"{entry.name}: target_path")
+        member_files: tuple[Path, ...] = ()
+        if entry.operation_kind == "regular-text-v1":
+            target_file = _walk_existing(repo_path, entry.target_path, f"{entry.name}: target_path")
+            _regular_file(target_file, f"{entry.name}: target_path")
+        else:
+            target_file = _walk_optional_directories(
+                repo_path, entry.target_path, f"{entry.name}: operation root"
+            )
+            resolved_members: list[Path] = []
+            for member in entry.members:
+                relative_parent = str(PurePosixPath(member.path).parent)
+                _walk_optional_directories(
+                    repo_path, relative_parent, f"{entry.name}: member parent"
+                )
+                resolved_members.append(repo_path / member.path)
+            member_files = tuple(resolved_members)
         resolved_repo = repo_path.resolve(strict=True)
-        resolved_target = target_file.resolve(strict=True)
+        resolved_target = (
+            target_file.resolve(strict=True)
+            if entry.operation_kind == "regular-text-v1"
+            else target_file
+        )
         if not _is_within(resolved_repo, root) or not _is_within(resolved_target, resolved_repo):
             raise ManifestError(f"{entry.name}: resolved path escapes repo root")
-        resolved.append(ResolvedPatch(entry, item.patch_bytes, resolved_repo, resolved_target))
+        resolved.append(
+            ResolvedPatch(entry, item.patch_bytes, resolved_repo, resolved_target, member_files)
+        )
     return resolved
-
-
-def resolve_manifest(entries: list[BuildPatch], patches_dir: Path, repo_root: Path) -> list[ResolvedPatch]:
-    from build_patch_registry import validate_registry
-
-    validated = validate_registry(entries, patches_dir)
-    return select_registry(
-        validated,
-        repo_root,
-        frozenset(entry.entry.target_repo for entry in validated),
-    )
 
 
 def paths_are_current(resolved: ResolvedPatch) -> bool:
     try:
         current_repo = resolved.repo_path.resolve(strict=True)
-        current_target = resolved.target_file.resolve(strict=True)
-        target_metadata = resolved.target_file.lstat()
     except OSError:
         return False
+    if resolved.entry.operation_kind == "regular-text-v1":
+        try:
+            current_target = resolved.target_file.resolve(strict=True)
+            target_metadata = resolved.target_file.lstat()
+        except OSError:
+            return False
+        target_kind_ok = stat.S_ISREG(target_metadata.st_mode) and not stat.S_ISLNK(
+            target_metadata.st_mode
+        )
+    else:
+        try:
+            _walk_optional_directories(
+                resolved.repo_path,
+                resolved.entry.target_path,
+                f"{resolved.entry.name}: operation root",
+            )
+            for member in resolved.entry.members:
+                _walk_optional_directories(
+                    resolved.repo_path,
+                    str(PurePosixPath(member.path).parent),
+                    f"{resolved.entry.name}: member parent",
+                )
+        except ManifestError:
+            return False
+        current_target = resolved.target_file
+        target_kind_ok = True
     return (
         current_repo == resolved.repo_path
         and current_target == resolved.target_file
-        and stat.S_ISREG(target_metadata.st_mode)
-        and not stat.S_ISLNK(target_metadata.st_mode)
+        and target_kind_ok
     )

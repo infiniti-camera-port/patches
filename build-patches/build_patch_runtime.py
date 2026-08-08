@@ -1,3 +1,4 @@
+# noqa: RUF100  # noqa: SIZE_OK - Git hardening and prepared-state derivation are one boundary.
 from __future__ import annotations
 
 import hashlib
@@ -6,8 +7,9 @@ import re
 import stat
 import subprocess
 import tempfile
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Final, Mapping, NamedTuple, Protocol, Sequence
+from typing import Final, NamedTuple, Protocol
 
 from build_patch_manifest import ResolvedPatch, paths_are_current
 
@@ -46,6 +48,13 @@ class PreparedPatch(NamedTuple):
     before_mode: int
     after: bytes
     after_mode: int
+    members: tuple[PreparedSymlink, ...] = ()
+
+
+class PreparedSymlink(NamedTuple):
+    path: Path
+    target: str
+    mode: int
 
 
 class PatchResult(NamedTuple):
@@ -189,6 +198,44 @@ def _mode(path: Path) -> int:
     return stat.S_IMODE(path.stat().st_mode)
 
 
+def _prepare_symlink_vector(
+    resolved: ResolvedPatch, git: GitClient
+) -> tuple[PreparedPatch | None, str]:
+    members = tuple(
+        PreparedSymlink(path, declared.target, declared.mode)
+        for path, declared in zip(resolved.member_files, resolved.entry.members, strict=True)
+    )
+    present = 0
+    absent = 0
+    for member in members:
+        try:
+            metadata = member.path.lstat()
+        except FileNotFoundError:
+            absent += 1
+            continue
+        except OSError as exc:
+            return None, f"{type(exc).__name__} while inspecting {member.path}: {exc}"
+        if not stat.S_ISLNK(metadata.st_mode):
+            return None, f"regular-file deletion forbidden for {member.path}"
+        try:
+            target = os.readlink(member.path)
+        except OSError as exc:
+            return None, f"{type(exc).__name__} while reading {member.path}: {exc}"
+        mode = stat.S_IFMT(metadata.st_mode)
+        if target != member.target or mode != member.mode:
+            return None, f"symlink precondition mismatch for {member.path}"
+        present += 1
+    if present and absent:
+        return None, "partial symlink-delete-set state is forbidden"
+    forward = git.apply_check(resolved.repo_path, resolved.patch_bytes)
+    reverse = git.apply_check(resolved.repo_path, resolved.patch_bytes, reverse=True)
+    if present == len(members) and (not forward.ok or reverse.ok):
+        return None, f"vector forward check failed forward_rc={forward.returncode} reverse_rc={reverse.returncode}"
+    if absent == len(members) and (forward.ok or not reverse.ok):
+        return None, f"vector reverse check failed forward_rc={forward.returncode} reverse_rc={reverse.returncode}"
+    return PreparedPatch(resolved, bool(present), b"", 0, b"", 0, members), ""
+
+
 def _derive_after(resolved: ResolvedPatch, git: GitClient, before: bytes, before_mode: int) -> tuple[bytes, int]:
     with tempfile.TemporaryDirectory(prefix="build-patch-derive-") as raw_directory:
         scratch = Path(raw_directory)
@@ -230,6 +277,13 @@ def prepare_patches(resolved_patches: list[ResolvedPatch], git: GitClient) -> tu
                 expected_head = resolved.entry.expected_head
                 errors.append(f"{resolved.entry.name}: source HEAD mismatch expected {expected_head} got {actual_head}")
                 continue
+        if resolved.entry.operation_kind == "symlink-delete-set-v1":
+            vector, vector_error = _prepare_symlink_vector(resolved, git)
+            if vector is None:
+                errors.append(f"{resolved.entry.name}: {vector_error}")
+            else:
+                prepared.append(vector)
+            continue
         forward = git.apply_check(resolved.repo_path, resolved.patch_bytes)
         reverse = git.apply_check(resolved.repo_path, resolved.patch_bytes, reverse=True)
         if forward.ok == reverse.ok:

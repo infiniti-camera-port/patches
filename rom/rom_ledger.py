@@ -11,11 +11,20 @@ import gzip
 import hashlib
 import json
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Protocol
 
 import rom_identity as identity
+
+
+class ProjectPreimage(Protocol):
+    path: str
+    head: str
+    effective_tree: str
+    dirty: bool
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -85,7 +94,7 @@ def read_rows(paths: Paths) -> list[dict[str, str]]:
 
 
 def _manifest_snapshot(tree: Path) -> tuple[str, bytes] | tuple[None, None]:
-    """`repo manifest -r` pins every project, including the ~1170 we do not fold.
+    """`repo manifest -r` preserves the resolved revision names behind the fold.
 
     Stored gzipped and addressed by content so ids sharing a manifest share one
     copy, which keeps an append-only record in git from growing by half a
@@ -93,11 +102,15 @@ def _manifest_snapshot(tree: Path) -> tuple[str, bytes] | tuple[None, None]:
     """
     try:
         done = subprocess.run(
-            ["repo", "manifest", "-r"], cwd=tree, capture_output=True, text=True
+            ["repo", "manifest", "-r"],
+            cwd=tree,
+            capture_output=True,
+            text=True,
+            check=False,
         )
     except (FileNotFoundError, NotADirectoryError):
-        # The snapshot is a convenience for reconstructing the ~1170 projects
-        # outside the fold. The id's own preimage does not depend on it, so a
+        # The snapshot is convenient revision metadata. The id's complete
+        # project preimage does not depend on it, so a
         # missing `repo` must not cost us the row - losing the record of an
         # attempt is worse than losing the wider snapshot of it.
         return None, None
@@ -107,8 +120,14 @@ def _manifest_snapshot(tree: Path) -> tuple[str, bytes] | tuple[None, None]:
     return hashlib.sha256(raw).hexdigest(), gzip.compress(raw)
 
 
-def store_preimage(paths: Paths, lane, verdict_id: str, states, base_oid: str,
-                   toolchain_digest: str) -> Path:
+def store_preimage(
+    paths: Paths,
+    lane,
+    verdict_id: str,
+    states: Sequence[ProjectPreimage],
+    base_oid: str,
+    toolchain_digest: str,
+) -> Path:
     """Write the id's inputs, once per distinct id."""
     target = paths.preimages / f"{verdict_id}.json"
     if target.exists():
@@ -131,7 +150,7 @@ def store_preimage(paths: Paths, lane, verdict_id: str, states, base_oid: str,
         "toolchain_digest": toolchain_digest,
         "manifest_snapshot_sha256": digest,
         "projects": [
-            {"path": s.project.path, "effective_tree": s.effective_tree,
+            {"path": s.path, "effective_tree": s.effective_tree,
              "head": s.head, "dirty": s.dirty}
             for s in states
         ],

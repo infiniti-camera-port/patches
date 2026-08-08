@@ -10,7 +10,11 @@ from build_patch_manifest import (
     ManifestError,
     ValidatedPatch,
 )
-from build_patch_payload import PatchPayloadError, read_verified_patch
+from build_patch_payload import (
+    PatchPayloadError,
+    read_verified_patch,
+    read_verified_symlink_delete_set,
+)
 
 CANONICAL_TARGETS: Final = {
     "allow-oplus-fwk-boot-jars": ("build/soong", "scripts/check_boot_jars/package_allowed_list.txt", 1),
@@ -24,9 +28,10 @@ CANONICAL_TARGETS: Final = {
         "src/com/android/settings/dashboard/CategoryManager.java",
         7,
     ),
-    "device-not-debuggable-macan": ("device/oneplus/macan", "lineage_macan.mk", 8),
-    "device-not-debuggable-macanc": ("device/oneplus/macanc", "lineage_macanc.mk", 9),
-    "device-not-debuggable-fairlady": ("device/oneplus/fairlady", "lineage_fairlady.mk", 10),
+    "remove-broken-build-tools": ("prebuilts/build-tools", "path", 8),
+    "device-not-debuggable-macan": ("device/oneplus/macan", "lineage_macan.mk", 9),
+    "device-not-debuggable-macanc": ("device/oneplus/macanc", "lineage_macanc.mk", 10),
+    "device-not-debuggable-fairlady": ("device/oneplus/fairlady", "lineage_fairlady.mk", 11),
 }
 
 
@@ -61,7 +66,14 @@ def validate_registry(entries: list[BuildPatch], patches_dir: Path) -> list[Vali
     validated: list[ValidatedPatch] = []
     for entry in sorted(entries, key=lambda item: item.apply_order):
         try:
-            patch_bytes = read_verified_patch(patches_dir / f"{entry.name}.patch", entry.target_path)
+            if entry.operation_kind == "symlink-delete-set-v1":
+                patch_bytes = read_verified_symlink_delete_set(
+                    patches_dir / f"{entry.name}.patch", entry.members
+                )
+            else:
+                patch_bytes = read_verified_patch(
+                    patches_dir / f"{entry.name}.patch", entry.target_path
+                )
         except PatchPayloadError as exc:
             raise ManifestError(f"{entry.name}: {exc}") from exc
         actual_sha = hashlib.sha256(patch_bytes).hexdigest()

@@ -36,8 +36,8 @@ def test_apply_and_reverse_share_selection_and_restore_clean_tree(
         check=False,
     )
     assert reversed_result.returncode == 0, output_of(reversed_result)
-    assert "10 patch(es) / 9 target(s)" in applied.stdout
-    assert "10 patch(es) / 9 target(s)" in reversed_result.stdout
+    assert "11 patch(es) / 10 target(s)" in applied.stdout
+    assert "11 patch(es) / 10 target(s)" in reversed_result.stdout
     assert "all selected patches reversed transactionally" in reversed_result.stdout
     for path in (
         "build/soong",
@@ -49,6 +49,7 @@ def test_apply_and_reverse_share_selection_and_restore_clean_tree(
         "external/skia",
         "external/dng_sdk",
         "packages/apps/Settings",
+        "prebuilts/build-tools",
     ):
         status = subprocess.run(
             ["git", "-C", str(repo_root / path), "status", "--porcelain"],
@@ -98,6 +99,7 @@ def test_reverse_failure_restores_every_applied_patch(
         "external/skia",
         "external/dng_sdk",
         "packages/apps/Settings",
+        "prebuilts/build-tools",
     ):
         status = subprocess.run(
             ["git", "-C", str(repo_root / path), "status", "--porcelain"],

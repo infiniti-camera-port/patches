@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import signal
 import stat
 from pathlib import Path
@@ -35,8 +36,8 @@ def _capture_reversed(
         reverse = git.apply_check(
             item.resolved.repo_path, item.resolved.patch_bytes, reverse=True
         )
-        data = item.resolved.target_file.read_bytes()
-        mode = _mode(item.resolved.target_file)
+        data = b"" if item.members else item.resolved.target_file.read_bytes()
+        mode = 0 if item.members else _mode(item.resolved.target_file)
     except OSError as exc:
         return None, f"{type(exc).__name__} while inspecting reverse state: {exc}"
     if forward.ok and not reverse.ok:
@@ -76,6 +77,37 @@ def _restore(items: list[ReversedPatch], git: GitOperations) -> tuple[bool, str]
     return not failures, "; ".join(failures)
 
 
+def _remove_active_vector(item: PreparedPatch, git: GitOperations) -> str:
+    failures: list[str] = []
+    for member in item.members:
+        try:
+            metadata = member.path.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            failures.append(f"{member.path}: {type(exc).__name__}: {exc}")
+            continue
+        if not stat.S_ISLNK(metadata.st_mode):
+            failures.append(f"{member.path}: manual recovery required for non-symlink")
+            continue
+        try:
+            target = os.readlink(member.path)
+        except OSError as exc:
+            failures.append(f"{member.path}: {type(exc).__name__}: {exc}")
+            continue
+        if target != member.target or stat.S_IFMT(metadata.st_mode) != member.mode:
+            failures.append(f"{member.path}: manual recovery required for changed symlink")
+            continue
+        try:
+            member.path.unlink()
+        except (OSError, KeyboardInterrupt, SystemExit) as exc:
+            failures.append(f"{member.path}: {type(exc).__name__}: {exc}")
+    if failures:
+        return "; ".join(failures)
+    state = verify_patch_state(item, git, item.after, item.after_mode, applied=True)
+    return "" if not state else f"vector recovery verification failed: {state}"
+
+
 def _recover(
     primary: str,
     reversed_items: list[ReversedPatch],
@@ -92,10 +124,17 @@ def _recover(
         if still_applied:
             captured, capture_error = _capture_reversed(active, git)
             if captured is None:
-                cleanup_failures.append(
-                    f"{active.resolved.entry.name}: active state is ambiguous: "
-                    f"applied={still_applied}; reversed={capture_error}"
-                )
+                if active.members:
+                    vector_error = _remove_active_vector(active, git)
+                    if vector_error:
+                        cleanup_failures.append(
+                            f"{active.resolved.entry.name}: {vector_error}"
+                        )
+                else:
+                    cleanup_failures.append(
+                        f"{active.resolved.entry.name}: active state is ambiguous: "
+                        f"applied={still_applied}; reversed={capture_error}"
+                    )
             else:
                 reversed_items.append(captured)
     rollback_ok, rollback_detail = _restore(reversed_items, git)

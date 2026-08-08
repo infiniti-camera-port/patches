@@ -1,0 +1,48 @@
+diff --git a/path/darwin-x86/date b/path/darwin-x86/date
+deleted file mode 120000
+index feaf26c..0000000
+--- a/path/darwin-x86/date
++++ /dev/null
+@@ -1 +0,0 @@
+-../../darwin-x86/bin/toybox
+\ No newline at end of file
+diff --git a/path/darwin-x86/tar b/path/darwin-x86/tar
+deleted file mode 120000
+index feaf26c..0000000
+--- a/path/darwin-x86/tar
++++ /dev/null
+@@ -1 +0,0 @@
+-../../darwin-x86/bin/toybox
+\ No newline at end of file
+diff --git a/path/linux-arm64/date b/path/linux-arm64/date
+deleted file mode 120000
+index 2f4bf7a..0000000
+--- a/path/linux-arm64/date
++++ /dev/null
+@@ -1 +0,0 @@
+-../../linux-arm64/bin/toybox
+\ No newline at end of file
+diff --git a/path/linux-arm64/tar b/path/linux-arm64/tar
+deleted file mode 120000
+index 2f4bf7a..0000000
+--- a/path/linux-arm64/tar
++++ /dev/null
+@@ -1 +0,0 @@
+-../../linux-arm64/bin/toybox
+\ No newline at end of file
+diff --git a/path/linux-x86/date b/path/linux-x86/date
+deleted file mode 120000
+index c6b4b1f..0000000
+--- a/path/linux-x86/date
++++ /dev/null
+@@ -1 +0,0 @@
+-../../linux-x86/bin/toybox
+\ No newline at end of file
+diff --git a/path/linux-x86/tar b/path/linux-x86/tar
+deleted file mode 120000
+index c6b4b1f..0000000
+--- a/path/linux-x86/tar
++++ /dev/null
+@@ -1 +0,0 @@
+-../../linux-x86/bin/toybox
+\ No newline at end of file

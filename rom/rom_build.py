@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import hashlib
-import subprocess
 from pathlib import Path
 
 import rom_gate as gate
 import rom_ledger as ledger
+
+
+class LedgerWriteError(Exception):
+    pass
 
 
 def artifact(out_dir: Path, goal: str, not_before_ns: int = 0) -> tuple[str, str]:
@@ -78,15 +81,18 @@ def record(paths, lane, verdict, goal: str, outcome: str, cls: str = gate.REFUSE
             artifact_dest: str = "-", run_id: str = "-",
             started_utc: str = "-", finished_utc: str = "-", seconds: int = 0,
             phase_seconds: str = "-") -> None:
-    ledger.store_preimage(paths, lane, verdict.actual_id, verdict.states,
-                          verdict.base_oid, verdict.toolchain_digest)
-    ledger.append_row(
-        paths, id=verdict.actual_id, utc=ledger.utc_now(), lane=lane.name, goal=goal,
-        **{"class": cls}, outcome=outcome, first_error=first_error,
-        artifact_sha256=artifact_sha256, artifact_dest=artifact_dest,
-        run_id=run_id, started_utc=started_utc, finished_utc=finished_utc,
-        seconds=seconds, phase_seconds=phase_seconds,
-    )
+    try:
+        ledger.store_preimage(paths, lane, verdict.actual_id, verdict.states,
+                              verdict.base_oid, verdict.toolchain_digest)
+        ledger.append_row(
+            paths, id=verdict.actual_id, utc=ledger.utc_now(), lane=lane.name, goal=goal,
+            **{"class": cls}, outcome=outcome, first_error=first_error,
+            artifact_sha256=artifact_sha256, artifact_dest=artifact_dest,
+            run_id=run_id, started_utc=started_utc, finished_utc=finished_utc,
+            seconds=seconds, phase_seconds=phase_seconds,
+        )
+    except (AttributeError, OSError, TypeError, UnicodeError) as exc:
+        raise LedgerWriteError(f"{type(exc).__name__}: {exc}") from exc
 
 
 def podman_argv(lane, toolchain, out_dir: Path | None, goal: str) -> list[str]:
@@ -115,10 +121,12 @@ def podman_argv(lane, toolchain, out_dir: Path | None, goal: str) -> list[str]:
         "-e", f"LUNCH={lane.lunch}",
         toolchain["image"],
         "bash", "-c",
-        "set -o pipefail; mkdir -p /tmp/buildhome; "
-        f"cd {tree} || exit 90; "
-        "source build/envsetup.sh || exit 90; "
-        'lunch "$LUNCH" || exit 90; '
-        "printf '@@ROM_STAGE=SOONG\\n'; m nothing || exit 91; "
-        f"printf '@@ROM_STAGE=NINJA\\n'; WITH_SU=true mka {goal}",
+        (
+            "set -o pipefail; mkdir -p /tmp/buildhome; "
+            f"cd {tree} || exit 90; "
+            "source build/envsetup.sh || exit 90; "
+            'lunch "$LUNCH" || exit 90; '
+            "printf '@@ROM_STAGE=SOONG\\n'; m nothing || exit 91; "
+            f"printf '@@ROM_STAGE=NINJA\\n'; WITH_SU=true mka {goal}"
+        ),
     ]

@@ -1,3 +1,4 @@
+# noqa: RUF100  # noqa: SIZE_OK - attempt execution and terminalization are one state machine.
 """One monitored build attempt from gate verdict through terminal event."""
 
 from __future__ import annotations
@@ -8,17 +9,32 @@ import signal
 import subprocess
 import time
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import FrameType
-from typing import Final, Sequence
+from typing import Final, TypedDict
 
 import rom_build as builds
 import rom_gate as gate
 import rom_monitor as monitor
-from rom_notify import EventId, NotifyEvent, Notifier, load_notifier
+from rom_notify import EventId, Notifier, NotifyEvent, load_notifier
 
 GIB: Final = 1 << 30
+LEDGER_WRITE_FAILED: Final = 74
+
+
+class MonitoringConfig(TypedDict, total=False):
+    heartbeat_seconds: float
+    min_free_gib: int
+    min_free_percent: float
+
+
+class ToolchainConfig(TypedDict, total=False):
+    ledger: str
+    monitoring: MonitoringConfig
+    image: str
+    ccache: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,8 +44,8 @@ class BuildOptions:
     out_dir: Path | None
 
 
-@dataclass(slots=True)  # noqa: MUTABLE_OK - observer accumulates child state
-class BuildObserver:  # noqa: MUTABLE_OK
+@dataclass(slots=True)  # noqa: RUF100  # noqa: MUTABLE_OK - observer accumulates child state
+class BuildObserver:
     """Mutable adapter from stream callbacks to durable run snapshots."""
 
     writer: monitor.StatusWriter
@@ -95,7 +111,7 @@ def write_simple_status(lane, state: str, detail: str, **extra: monitor.Scalar) 
     monitor.StatusWriter(lane.status_file, event_file(lane)).write(fields, transition=True)
 
 
-def disk_allows(path: Path, config: dict) -> tuple[bool, int, int]:
+def disk_allows(path: Path, config: MonitoringConfig) -> tuple[bool, int, int]:
     usage = shutil.disk_usage(path)
     min_gib = int(config.get("min_free_gib", 0))
     min_percent = float(config.get("min_free_percent", 0))
@@ -125,7 +141,21 @@ def _notify(
     ))
 
 
-def execute_build(options: BuildOptions, lane, toolchain: dict, verdict, repo_root: Path) -> int:
+def _record_once(*args, **kwargs) -> str | None:
+    try:
+        builds.record(*args, **kwargs)
+    except builds.LedgerWriteError as exc:
+        return f"ledger: {exc}"
+    return None
+
+
+def execute_build(
+    options: BuildOptions,
+    lane,
+    toolchain: ToolchainConfig,
+    verdict,
+    repo_root: Path,
+) -> int:
     build_class = gate.EXPERIMENTAL if verdict.state != gate.PINNED else gate.PINNED
     monitoring = toolchain.get("monitoring", {})
     allowed, free_bytes, free_percent = disk_allows(lane.tree, monitoring)
@@ -169,12 +199,15 @@ def execute_build(options: BuildOptions, lane, toolchain: dict, verdict, repo_ro
         fields.update(state="INTERRUPTED", detail=f"signal-{signum}")
         writer.write(fields, observer.last_tail, transition=True)
         _notify(notifier, fields, "INTERRUPTED", observer.last_tail, "-", "-", 130)
-        builds.record(
+        ledger_error = _record_once(
             builds.ledger_paths(toolchain, repo_root), lane, verdict, options.goal,
             "INTERRUPTED", cls=build_class, first_error=f"signal {signum}",
             run_id=run_id, started_utc=started_utc, finished_utc=monitor.utc_now(),
             seconds=int(time.monotonic() - started_monotonic), phase_seconds=observer.finish_phase(),
         )
+        if ledger_error is not None:
+            fields["secondary_error"] = ledger_error
+            writer.write(fields, observer.last_tail, transition=True)
         os._exit(130)
 
     for caught_signal in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
@@ -188,7 +221,10 @@ def execute_build(options: BuildOptions, lane, toolchain: dict, verdict, repo_ro
         result = monitor.stream_process(request)
         lines = result.lines
         root_owned = subprocess.run(
-            ["find", str(observed_out), "-user", "root"], capture_output=True, text=True
+            ["find", str(observed_out), "-user", "root"],
+            capture_output=True,
+            text=True,
+            check=False,
         )
         strays = len(root_owned.stdout.splitlines())
         artifact_source = "-"
@@ -209,19 +245,24 @@ def execute_build(options: BuildOptions, lane, toolchain: dict, verdict, repo_ro
                 fields["detail"] = "rc-0"
         else:
             fields["detail"] = f"rc-{returncode}"
-        excerpt = monitor.error_excerpt(lines)
         triggers = ("FAILED:", "ninja: error", "error:", "Traceback (most recent call last)")
         first_error = next(
             (line[:200] for line in reversed(lines) if any(token in line for token in triggers)), "-"
         )
         elapsed = int(time.monotonic() - started_monotonic)
-        builds.record(
+        ledger_error = _record_once(
             builds.ledger_paths(toolchain, repo_root), lane, verdict, options.goal, state,
             cls=build_class, first_error=first_error, artifact_sha256=digest,
             artifact_dest=artifact_dest, run_id=run_id, started_utc=started_utc,
             finished_utc=monitor.utc_now(), seconds=elapsed,
             phase_seconds=observer.finish_phase(),
         )
+        if ledger_error is not None:
+            fields["secondary_error"] = ledger_error
+            if returncode == 0:
+                returncode = LEDGER_WRITE_FAILED
+                state = "LEDGER_WRITE_FAILED"
+                fields["detail"] = "ledger-write-failed"
         fields.update(
             state=state, root_owned=strays, artifact_source=artifact_source,
             artifact_dest=artifact_dest, artifact_sha256=digest,
@@ -231,17 +272,19 @@ def execute_build(options: BuildOptions, lane, toolchain: dict, verdict, repo_ro
         terminalized = True
         print(f"build finished rc={returncode} log={log}")
         return returncode
-    except Exception as exc:  # noqa: BROAD_EXCEPT_OK - attempt boundary terminalizes unknown failures
+    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
         fields.update(state="FAILED", detail=f"monitor-error-{type(exc).__name__}")
         writer.write(fields, lines, transition=True)
         _notify(notifier, fields, "FAILED", lines or (str(exc),), "-", "-", 4)
-        builds.record(
+        ledger_error = _record_once(
             builds.ledger_paths(toolchain, repo_root), lane, verdict, options.goal, "FAILED",
             cls=build_class, first_error=str(exc)[:200], run_id=run_id,
             started_utc=started_utc, finished_utc=monitor.utc_now(),
             seconds=int(time.monotonic() - started_monotonic),
             phase_seconds=observer.finish_phase(),
         )
+        if ledger_error is not None:
+            fields["secondary_error"] = ledger_error
         terminalized = True
         return 4
     finally:

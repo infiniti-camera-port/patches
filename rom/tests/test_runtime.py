@@ -84,3 +84,81 @@ def test_execute_build_failure_carries_final_error_tail(tmp_path: Path, monkeypa
     assert returncode == 1
     assert state["state"] == "FAILED"
     assert "error: final failure" in state["tail"]
+
+
+def test_child_failure_survives_secondary_ledger_failure_without_recursive_record(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # Given a child that fails and a ledger serializer that also fails.
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    lane = FakeLane("test", tree, tmp_path / "logs" / "STATUS", tmp_path / "artifacts")
+    script = "print('@@ROM_STAGE=NINJA');print('error: child truth');raise SystemExit(23)"
+    monkeypatch.setattr(rom_runtime.builds, "podman_argv", lambda *_args: [sys.executable, "-c", script])
+    calls = 0
+
+    def fail_store(*_args, **_kwargs) -> None:
+        nonlocal calls
+        calls += 1
+        raise OSError("injected ledger failure")
+
+    monkeypatch.setattr(rom_runtime.builds.ledger, "store_preimage", fail_store)
+    verdict = SimpleNamespace(
+        state=rom_runtime.gate.PINNED, actual_id="a" * 64, states=[],
+        base_oid="b" * 40, toolchain_digest="c" * 64,
+    )
+
+    # When the attempt reaches terminal recording.
+    returncode = rom_runtime.execute_build(
+        rom_runtime.BuildOptions("bacon", None, None), lane,
+        {"ledger": str(tmp_path / "ledger"), "monitoring": {}}, verdict, tmp_path,
+    )
+
+    # Then child truth wins and the failing record path is not called recursively.
+    status = __import__("json").loads(lane.status_file.with_name("STATUS.json").read_text())
+    assert returncode == 23
+    assert calls == 1
+    assert status["state"] == "FAILED"
+    assert status["detail"] == "rc-23"
+    assert "error: child truth" in status["tail"]
+    assert "ledger" in status["secondary_error"]
+
+
+def test_successful_child_with_ledger_failure_cannot_claim_success(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # Given a successful child/artifact and a ledger I/O failure.
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    lane = FakeLane("test", tree, tmp_path / "logs" / "STATUS", tmp_path / "artifacts")
+    output = tree / "out" / "target" / "product" / "device" / "test.zip"
+    script = (
+        "from pathlib import Path;"
+        f"p=Path({str(output)!r});p.parent.mkdir(parents=True);p.write_bytes(b'artifact')"
+    )
+    monkeypatch.setattr(rom_runtime.builds, "podman_argv", lambda *_args: [sys.executable, "-c", script])
+    calls = 0
+
+    def fail_store(*_args, **_kwargs) -> None:
+        nonlocal calls
+        calls += 1
+        raise OSError("injected ledger failure")
+
+    monkeypatch.setattr(rom_runtime.builds.ledger, "store_preimage", fail_store)
+    verdict = SimpleNamespace(
+        state=rom_runtime.gate.PINNED, actual_id="a" * 64, states=[],
+        base_oid="b" * 40, toolchain_digest="c" * 64,
+    )
+
+    # When the attempt would otherwise certify SUCCESS.
+    returncode = rom_runtime.execute_build(
+        rom_runtime.BuildOptions("bacon", None, None), lane,
+        {"ledger": str(tmp_path / "ledger"), "monitoring": {}}, verdict, tmp_path,
+    )
+
+    # Then the dedicated ledger state is terminal and nonrecursive.
+    status = __import__("json").loads(lane.status_file.with_name("STATUS.json").read_text())
+    assert returncode == rom_runtime.LEDGER_WRITE_FAILED
+    assert calls == 1
+    assert status["state"] == "LEDGER_WRITE_FAILED"
+    assert status["detail"] == "ledger-write-failed"

@@ -7,6 +7,7 @@ import sys
 from collections.abc import Mapping
 from pathlib import Path
 
+from support_build_tools import populate_build_tools
 from support_utilities import (
     added_payload_lines,  # noqa: F401
     output_of,  # noqa: F401
@@ -185,6 +186,7 @@ def copy_overlay(destination: Path) -> Path:
 
 
 def initialize_repo(repo: Path, files: Mapping[str, str]) -> None:
+    repo.mkdir(parents=True, exist_ok=True)
     for relative_path, content in files.items():
         target = repo / relative_path
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -201,12 +203,15 @@ def create_repo_root(root: Path) -> Path:
         "external/skia": SKIA_FILES,
         "external/dng_sdk": DNG_FILES,
         "packages/apps/Settings": SETTINGS_FILES,
+        "prebuilts/build-tools": {},
     }
     for device in ("infiniti", "macan", "macanc", "fairlady"):
         fixtures[f"device/oneplus/{device}"] = device_files(device)
     for relative, files in fixtures.items():
         checkout = root / relative
         initialize_repo(checkout, files)
+        if relative == "prebuilts/build-tools":
+            populate_build_tools(checkout)
         run_command(["git", "config", "user.name", "Fixture"], cwd=checkout)
         run_command(["git", "config", "user.email", "fixture@example.invalid"], cwd=checkout)
         run_command(["git", "add", "."], cwd=checkout)

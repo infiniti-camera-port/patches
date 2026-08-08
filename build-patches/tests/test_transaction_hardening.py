@@ -22,8 +22,9 @@ from build_patch_manifest import (
     BuildPatch,
     ResolvedPatch,
     parse_manifest,
-    resolve_manifest,
+    select_registry,
 )
+from build_patch_registry import validate_registry
 from build_patch_reverse import execute_reverse_transaction
 from build_patch_runtime import CommandResult, GitClient, PreparedPatch, prepare_patches
 from build_patch_transaction import execute_transaction
@@ -187,7 +188,12 @@ class TransactionHardeningTests(unittest.TestCase):
         overlay = copy_overlay(self.scratch / "overlay")
         repo_root = create_repo_root(self.scratch / "repo")
         entries = parse_manifest(overlay / "manifest.yml")
-        resolved = resolve_manifest(entries, overlay, repo_root)
+        validated = validate_registry(entries, overlay)
+        resolved = select_registry(
+            validated,
+            repo_root,
+            frozenset(item.entry.target_repo for item in validated),
+        )
         patch_file = overlay / "allow-oplus-fwk-boot-jars.patch"
         patch_file.write_bytes(
             patch_file.read_bytes()

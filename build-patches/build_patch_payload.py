@@ -3,8 +3,20 @@ from __future__ import annotations
 import os
 import shlex
 import stat
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Final
+from typing import Final, Protocol
+
+
+class SymlinkPayloadMember(Protocol):
+    @property
+    def path(self) -> str: ...
+
+    @property
+    def target(self) -> str: ...
+
+    @property
+    def mode(self) -> int: ...
 
 FORBIDDEN_MARKERS: Final = (
     b"GIT binary patch",
@@ -82,4 +94,50 @@ def read_verified_patch(path: Path, expected_target: str) -> bytes:
         raise PatchPayloadError(
             f"patch must edit exactly target_path {expected_target!r}: diff={diff_targets} old={old_targets} new={new_targets}"
         )
+    return payload
+
+
+def read_verified_symlink_delete_set(
+    path: Path, expected_members: Sequence[SymlinkPayloadMember]
+) -> bytes:
+    payload = _read_no_follow(path)
+    if b"\0" in payload or any(
+        marker in payload
+        for marker in FORBIDDEN_MARKERS
+        if marker != b"deleted file mode "
+    ):
+        raise PatchPayloadError(f"symlink deletion payload has forbidden content: {path.name}")
+    try:
+        lines = payload.decode("utf-8").splitlines()
+    except UnicodeError as exc:
+        raise PatchPayloadError(f"patch is not valid UTF-8 text: {path.name}") from exc
+    sections: list[list[str]] = []
+    for line in lines:
+        if line.startswith("diff --git "):
+            sections.append([])
+        if not sections:
+            raise PatchPayloadError(f"symlink deletion payload lacks diff header: {path.name}")
+        sections[-1].append(line)
+    if len(sections) != len(expected_members):
+        raise PatchPayloadError(
+            f"symlink deletion member count mismatch expected {len(expected_members)} got {len(sections)}"
+        )
+    for section, member in zip(sections, expected_members, strict=True):
+        expected_prefix = [
+            f"diff --git a/{member.path} b/{member.path}",
+            "deleted file mode 120000",
+        ]
+        if section[:2] != expected_prefix:
+            raise PatchPayloadError(f"invalid symlink deletion header for {member.path}")
+        required = {
+            f"--- a/{member.path}",
+            "+++ /dev/null",
+            "@@ -1 +0,0 @@",
+            f"-{member.target}",
+            "\\ No newline at end of file",
+        }
+        if not required <= set(section):
+            raise PatchPayloadError(f"invalid symlink deletion body for {member.path}")
+        if any(line.startswith(("new file mode ", "rename ", "copy ")) for line in section):
+            raise PatchPayloadError(f"forbidden symlink deletion transition for {member.path}")
     return payload
