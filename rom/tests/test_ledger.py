@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -9,6 +10,12 @@ sys.path.insert(0, str(ROOT))
 import rom_identity
 import rom_ledger
 from build_composition import ResolvedProject
+
+
+class LedgerLane(NamedTuple):
+    tree: Path
+    name: str
+    lunch: str
 
 
 def test_old_ledger_rows_are_read_with_new_columns(tmp_path: Path) -> None:
@@ -50,7 +57,7 @@ def test_nonempty_resolved_project_preimage_uses_direct_fields_and_recomputes_id
         )
         for index in range(1193)
     ]
-    lane = type("Lane", (), {"tree": tmp_path, "name": "features-v3", "lunch": "lineage_infiniti-userdebug"})()
+    lane = LedgerLane(tmp_path, "features-v3", "lineage_infiniti-userdebug")
     base_oid = "b" * 40
     toolchain_digest = "c" * 64
     verdict_id = rom_identity.fold(

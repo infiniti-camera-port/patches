@@ -61,7 +61,10 @@ def test_execute_build_publishes_and_records_before_success(tmp_path: Path, monk
         state=rom_runtime.gate.PINNED, actual_id="a" * 64, states=[real_project()],
         base_oid="b" * 40, toolchain_digest="c" * 64,
     )
-    toolchain = {"ledger": str(tmp_path / "ledger"), "monitoring": {}}
+    toolchain: rom_runtime.ToolchainConfig = {
+        "ledger": str(tmp_path / "ledger"),
+        "monitoring": {},
+    }
 
     returncode = rom_runtime.execute_build(
         rom_runtime.BuildOptions("bacon", None, None), lane, toolchain, verdict, tmp_path

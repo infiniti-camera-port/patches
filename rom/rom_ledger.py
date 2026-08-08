@@ -21,10 +21,17 @@ import rom_identity as identity
 
 
 class ProjectPreimage(Protocol):
-    path: str
-    head: str
-    effective_tree: str
-    dirty: bool
+    @property
+    def path(self) -> str: ...
+
+    @property
+    def head(self) -> str: ...
+
+    @property
+    def effective_tree(self) -> str: ...
+
+    @property
+    def dirty(self) -> bool: ...
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

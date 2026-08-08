@@ -1,0 +1,30 @@
+{
+  "include": [
+    "build-patches/build_patch_manifest.py",
+    "build-patches/build_patch_payload.py",
+    "build-patches/build_patch_registry.py",
+    "build-patches/build_patch_reverse.py",
+    "build-patches/build_patch_runtime.py",
+    "build-patches/build_patch_transaction.py",
+    "build-patches/tests/support.py",
+    "build-patches/tests/support_build_tools.py",
+    "build-patches/tests/test_composition_reverse.py",
+    "build-patches/tests/test_symlink_delete_payload.py",
+    "build-patches/tests/test_symlink_delete_recovery.py",
+    "build-patches/tests/test_symlink_delete_set.py",
+    "build-patches/tests/test_transaction_hardening.py",
+    "rom/rom_build.py",
+    "rom/rom_ledger.py",
+    "rom/rom_runtime.py",
+    "rom/tests/test_composition_overlay.py",
+    "rom/tests/test_ledger.py",
+    "rom/tests/test_runtime.py"
+  ],
+  "extraPaths": [
+    "build-patches",
+    "build-patches/tests",
+    "rom"
+  ],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "standard"
+}
