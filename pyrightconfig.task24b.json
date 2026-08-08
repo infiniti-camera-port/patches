@@ -22,6 +22,7 @@
     "rom/tests/test_runtime.py",
     "rom/tests/test_runtime_boundaries.py",
     "rom/tests/test_runtime_notification.py",
+    "rom/tests/test_runtime_unexpected.py",
     "rom/tests/test_runtime_writer.py"
   ],
   "extraPaths": [

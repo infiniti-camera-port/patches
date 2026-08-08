@@ -265,9 +265,9 @@ def execute_build(
         )
         if ledger_error is not None:
             add_secondary(ledger_error)
-        terminalized = True
         notify_terminal("FAILED", (str(exc),), "-", "-", 4)
         write_terminal((str(exc),))
+        terminalized = True
         return 4
 
     def interrupted(signum: int, _frame: FrameType | None) -> None:
@@ -286,9 +286,9 @@ def execute_build(
         )
         if ledger_error is not None:
             add_secondary(ledger_error)
-        terminalized = True
         notify_terminal("INTERRUPTED", observer.last_tail, "-", "-", 130)
         write_terminal(observer.last_tail)
+        terminalized = True
         os._exit(130)
 
     for caught_signal in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
@@ -348,9 +348,9 @@ def execute_build(
             state=state, root_owned=strays, artifact_source=artifact_source,
             artifact_dest=artifact_dest, artifact_sha256=digest,
         )
-        terminalized = True
         notify_terminal(state, lines, artifact_source, artifact_dest, returncode)
         write_terminal(monitor.bounded_tail(lines))
+        terminalized = True
         print(f"build finished rc={returncode} log={log}")
         return returncode
     except (
@@ -371,27 +371,28 @@ def execute_build(
         )
         if ledger_error is not None:
             add_secondary(ledger_error)
-        terminalized = True
         notify_terminal("FAILED", lines or (str(exc),), "-", "-", 4)
         write_terminal(lines)
+        terminalized = True
         return 4
     finally:
         if not terminalized:
-            fields.update(state="FAILED", detail="unfinalized-attempt")
-            ledger_error = record_attempt(
-                builds.ledger_paths(toolchain, repo_root),
-                lane,
-                verdict,
-                options.goal,
-                "FAILED",
-                cls=build_class,
-                first_error="unfinalized attempt",
-                run_id=run_id,
-                started_utc=started_utc,
-                finished_utc=monitor.utc_now(),
-                seconds=int(time.monotonic() - started_monotonic),
-                phase_seconds=observer.finish_phase(),
-            )
-            if ledger_error is not None:
-                add_secondary(ledger_error)
+            if not ledger_attempted:
+                fields.update(state="FAILED", detail="unfinalized-attempt")
+                ledger_error = record_attempt(
+                    builds.ledger_paths(toolchain, repo_root),
+                    lane,
+                    verdict,
+                    options.goal,
+                    "FAILED",
+                    cls=build_class,
+                    first_error="unfinalized attempt",
+                    run_id=run_id,
+                    started_utc=started_utc,
+                    finished_utc=monitor.utc_now(),
+                    seconds=int(time.monotonic() - started_monotonic),
+                    phase_seconds=observer.finish_phase(),
+                )
+                if ledger_error is not None:
+                    add_secondary(ledger_error)
             write_terminal(lines)
