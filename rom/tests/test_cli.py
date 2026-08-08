@@ -23,7 +23,8 @@ def test_launch_uses_canonical_rom_entry_without_redirection(monkeypatch, capsys
     namespace = runpy.run_path(str(ROOT / "rom"))
     captured: list[str] = []
 
-    def fake_run(argv):
+    def fake_run(argv, *, check: bool):
+        assert check is False
         captured.extend(argv)
         return SimpleNamespace(returncode=0)
 

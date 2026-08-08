@@ -16,7 +16,14 @@ def test_monitoring_policy_is_propagated_into_toolchain(tmp_path: Path, monkeypa
         "toolchain": {},
         "lanes": {
             "test": {
-                "tree": str(tmp_path), "base_manifest": {}, "governed_manifest": {},
+                "tree": str(tmp_path),
+                "base_manifest": {"url": "base", "revision": "main"},
+                "governed_manifest": {
+                    "url": "governed",
+                    "revision": "main",
+                    "path": "local_manifests/test.xml",
+                    "install_as": "test.xml",
+                },
                 "lunch": "test-userdebug", "status_file": str(tmp_path / "STATUS"),
                 "artifacts": str(tmp_path / "artifacts"), "governed_org": "test",
             }

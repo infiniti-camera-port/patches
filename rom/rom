@@ -23,15 +23,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import rom_gate as gate  # noqa: E402
-import rom_ledger as ledger  # noqa: E402
-import rom_build as builds  # noqa: E402
-import rom_lfs as lfs  # noqa: E402
-import rom_lanes as lanes  # noqa: E402
-import rom_monitor as monitor  # noqa: E402
-import rom_runtime as runtime  # noqa: E402
-from rom_identity import IdentityError, OfflineError  # noqa: E402
-from rom_lanes import LaneError  # noqa: E402
+import rom_build as builds
+import rom_gate as gate
+import rom_lanes as lanes
+import rom_ledger as ledger
+import rom_lfs as lfs
+import rom_manifest_install as manifest_install
+import rom_manifest_provenance as provenance
+import rom_monitor as monitor
+import rom_runtime as runtime
+from rom_identity import IdentityError, OfflineError
+from rom_lanes import LaneError
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -68,7 +70,24 @@ def evaluate(lane, toolchain, require_expected=True):
     return gate.evaluate(lane, toolchain, projects, REPO_ROOT, require_expected)
 
 
+def validate_provenance(lane) -> None:
+    provenance.validate_base(lane.tree, lane.base_manifest)
+    provenance.validate_governed(lane.tree, lane.governed_manifest)
+
+
+def render_provenance_refusal(exc) -> None:
+    print("state       REFUSED", file=sys.stderr)
+    print(f"installed   {exc.installed_oid}", file=sys.stderr)
+    print(f"declared    {exc.declared_oid}", file=sys.stderr)
+    print(f"reason      {exc.reason}", file=sys.stderr)
+
+
 def cmd_status(args, lane, toolchain) -> int:
+    try:
+        validate_provenance(lane)
+    except provenance.ManifestProvenanceError as exc:
+        render_provenance_refusal(exc)
+        return 1
     verdict = evaluate(lane, toolchain, require_expected=False)
     print(gate.render(verdict, lane))
     if not args.no_lfs_check:
@@ -78,8 +97,10 @@ def cmd_status(args, lane, toolchain) -> int:
               + (f" ({len(known)} known-unhydratable, ignored)" if known else ""))
         if actionable:
             print("            the identity above cannot see these: a pointer and its")
-            print("            content are the same git blob. Run `rom %s sync` to hydrate."
-                  % lane.name)
+            print(
+                f"            content are the same git blob. Run `rom {lane.name} sync` "
+                "to hydrate."
+            )
             for path in actionable[:5]:
                 print(f"              {path}")
     return 0 if verdict.state != gate.REFUSED else 1
@@ -108,10 +129,10 @@ def cmd_sync(args, lane, toolchain) -> int:
         # backend at all - with filter.lfs.required=true that is fatal, not a
         # passthrough. Hydration happens afterwards, per repo, in hydrate().
         init = subprocess.run(
-            ["repo", "init", "-u", lane.base_manifest["url"],
-             "-b", lane.base_manifest["revision"], "--no-clone-bundle",
+            ["repo", "init", "-u", lane.base_manifest.url,
+             "-b", lane.base_manifest.revision, "--no-clone-bundle",
              "--no-git-lfs", *builds.mirror_args(toolchain)],
-            cwd=tree, env=env,
+            cwd=tree, env=env, check=False,
         )
         if init.returncode != 0:
             return init.returncode
@@ -123,28 +144,14 @@ def cmd_sync(args, lane, toolchain) -> int:
     # then never moved to match it, leaving the tree inconsistent with its own
     # declaration - a scoped sync must touch only what it was asked to touch.
     if not scoped:
-        local = tree / ".repo" / "local_manifests"
-        local.mkdir(parents=True, exist_ok=True)
-        manifest = lane.governed_manifest
-        raw = manifest["url"].removesuffix(".git").replace(
-            "github.com", "raw.githubusercontent.com"
-        )
-        fetched = subprocess.run(
-            ["curl", "-fsSL",
-             f"{raw}/{manifest['revision']}/{manifest['path']}",
-             "-o", str(local / manifest["install_as"])],
-            env=env,
-        )
-        if fetched.returncode != 0:
-            print("could not fetch the governed manifest", file=sys.stderr)
-            return fetched.returncode
+        manifest_install.stage_remote_manifest(tree, lane.governed_manifest)
     cmd = ["repo", "sync", "-c", "--no-clone-bundle", "-j8", *scoped]
-    done = subprocess.run(cmd, cwd=tree, env=env)
+    done = subprocess.run(cmd, cwd=tree, env=env, check=False)
     if done.returncode != 0 and not scoped:
         print("=== sweep incomplete, final fail-fast pass ===")
         done = subprocess.run(
             ["repo", "sync", "-c", "--no-clone-bundle", "-j4", "--fail-fast"],
-            cwd=tree, env=env,
+            cwd=tree, env=env, check=False,
         )
     hydration = None
     if done.returncode == 0:
@@ -164,6 +171,12 @@ def cmd_sync(args, lane, toolchain) -> int:
 
 def cmd_build(args, lane, toolchain) -> int:
     try:
+        validate_provenance(lane)
+    except provenance.ManifestProvenanceError as exc:
+        render_provenance_refusal(exc)
+        write_status(lane, gate.REFUSED, "manifest-provenance")
+        return 2
+    try:
         verdict = evaluate(lane, toolchain, require_expected=True)
     except OfflineError as exc:
         print(f"refusing to build: cannot reach the published world ({exc})",
@@ -177,11 +190,10 @@ def cmd_build(args, lane, toolchain) -> int:
     if verdict.state == gate.REFUSED:
         if args.override != verdict.actual_id:
             print(
-                "REFUSED: a governed project is not at its published revision.\n"
-                "Reconcile with `rom %s sync`, do not override.\n"
+                f"REFUSED: a governed project is not at its published revision.\n"
+                f"Reconcile with `rom {lane.name} sync`, do not override.\n"
                 "If you truly mean to build this tree anyway, pass the ACTUAL id:\n"
-                "    rom %s build --override %s"
-                % (lane.name, lane.name, verdict.actual_id),
+                f"    rom {lane.name} build --override {verdict.actual_id}",
                 file=sys.stderr,
             )
             write_status(lane, gate.REFUSED, "governed-drift",
@@ -236,7 +248,8 @@ def cmd_launch(args, lane, _toolchain) -> int:
     if args.launch_action == "build":
         command.append(args.goal)
     done = subprocess.run(
-        ["tmux", "new-session", "-d", "-s", name, "-e", f"ROM_SESSION_NAME={name}", *command]
+        ["tmux", "new-session", "-d", "-s", name, "-e", f"ROM_SESSION_NAME={name}", *command],
+        check=False,
     )
     if done.returncode == 0:
         print(name)
@@ -278,7 +291,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         lane, toolchain = lanes.load_lane(args.lane)
-    except LaneError as exc:
+    except (LaneError, provenance.ManifestProvenanceError) as exc:
         print(exc, file=sys.stderr)
         return 64
 
@@ -287,7 +300,7 @@ def main() -> int:
                "observe": cmd_observe, "launch": cmd_launch}[args.action]
     try:
         return handler(args, lane, toolchain)
-    except (LaneError, IdentityError) as exc:
+    except (LaneError, IdentityError, provenance.ManifestProvenanceError) as exc:
         print(exc, file=sys.stderr)
         return 65
 

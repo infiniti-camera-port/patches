@@ -17,6 +17,12 @@ if str(BUILD_PATCHES) not in sys.path:
     sys.path.insert(0, str(BUILD_PATCHES))
 
 from build_composition import CompositionReceipt, compose
+from rom_manifest_provenance import (
+    BaseManifestSpec,
+    ManifestSpec,
+    parse_base_manifest_spec,
+    parse_manifest_spec,
+)
 
 DEFAULT_FETCH_BASE = "https://github.com/"
 
@@ -38,8 +44,8 @@ class Project:
 class Lane:
     name: str
     tree: Path
-    base_manifest: dict
-    governed_manifest: dict
+    base_manifest: BaseManifestSpec
+    governed_manifest: ManifestSpec
     lunch: str
     status_file: Path
     artifacts: Path
@@ -71,8 +77,8 @@ def load_lane(name: str) -> tuple[Lane, dict]:
     lane = Lane(
         name=name,
         tree=Path(row["tree"]),
-        base_manifest=row["base_manifest"],
-        governed_manifest=row["governed_manifest"],
+        base_manifest=parse_base_manifest_spec(row["base_manifest"]),
+        governed_manifest=parse_manifest_spec(row["governed_manifest"]),
         lunch=row["lunch"],
         status_file=Path(row["status_file"]),
         artifacts=Path(row["artifacts"]),
@@ -160,7 +166,7 @@ def read_installed_manifest(lane: Lane) -> str:
         lane.tree
         / ".repo"
         / "local_manifests"
-        / lane.governed_manifest["install_as"]
+        / lane.governed_manifest.install_as
     )
     if not installed.is_file():
         raise LaneError(
