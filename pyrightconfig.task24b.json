@@ -18,7 +18,8 @@
     "rom/rom_runtime.py",
     "rom/tests/test_composition_overlay.py",
     "rom/tests/test_ledger.py",
-    "rom/tests/test_runtime.py"
+    "rom/tests/test_runtime.py",
+    "rom/tests/test_runtime_notification.py"
   ],
   "extraPaths": [
     "build-patches",

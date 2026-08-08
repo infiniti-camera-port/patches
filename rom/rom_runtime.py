@@ -189,6 +189,38 @@ def execute_build(
     notifier = load_notifier(Path(__file__).with_name("notify.local.json"))
     lines: tuple[str, ...] = ()
     terminalized = False
+    ledger_attempted = False
+
+    def add_secondary(message: str) -> None:
+        current = str(fields.get("secondary_error", ""))
+        fields["secondary_error"] = f"{current}; {message}" if current else message
+
+    def record_attempt(*args, **kwargs) -> str | None:
+        nonlocal ledger_attempted
+        if ledger_attempted:
+            return None
+        ledger_attempted = True
+        return _record_once(*args, **kwargs)
+
+    def notify_terminal(
+        state: str,
+        tail: Sequence[str],
+        artifact_source: str,
+        artifact_dest: str,
+        returncode: int,
+    ) -> None:
+        try:
+            _notify(
+                notifier,
+                fields,
+                state,
+                tail,
+                artifact_source,
+                artifact_dest,
+                returncode,
+            )
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            add_secondary(f"notify: {type(exc).__name__}: {exc}")
 
     def interrupted(signum: int, _frame: FrameType | None) -> None:
         if observer.child_pid:
@@ -197,17 +229,16 @@ def execute_build(
             except ProcessLookupError:
                 observer.child_pid = 0
         fields.update(state="INTERRUPTED", detail=f"signal-{signum}")
-        writer.write(fields, observer.last_tail, transition=True)
-        _notify(notifier, fields, "INTERRUPTED", observer.last_tail, "-", "-", 130)
-        ledger_error = _record_once(
+        ledger_error = record_attempt(
             builds.ledger_paths(toolchain, repo_root), lane, verdict, options.goal,
             "INTERRUPTED", cls=build_class, first_error=f"signal {signum}",
             run_id=run_id, started_utc=started_utc, finished_utc=monitor.utc_now(),
             seconds=int(time.monotonic() - started_monotonic), phase_seconds=observer.finish_phase(),
         )
         if ledger_error is not None:
-            fields["secondary_error"] = ledger_error
-            writer.write(fields, observer.last_tail, transition=True)
+            add_secondary(ledger_error)
+        notify_terminal("INTERRUPTED", observer.last_tail, "-", "-", 130)
+        writer.write(fields, observer.last_tail, transition=True)
         os._exit(130)
 
     for caught_signal in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
@@ -250,7 +281,7 @@ def execute_build(
             (line[:200] for line in reversed(lines) if any(token in line for token in triggers)), "-"
         )
         elapsed = int(time.monotonic() - started_monotonic)
-        ledger_error = _record_once(
+        ledger_error = record_attempt(
             builds.ledger_paths(toolchain, repo_root), lane, verdict, options.goal, state,
             cls=build_class, first_error=first_error, artifact_sha256=digest,
             artifact_dest=artifact_dest, run_id=run_id, started_utc=started_utc,
@@ -258,7 +289,7 @@ def execute_build(
             phase_seconds=observer.finish_phase(),
         )
         if ledger_error is not None:
-            fields["secondary_error"] = ledger_error
+            add_secondary(ledger_error)
             if returncode == 0:
                 returncode = LEDGER_WRITE_FAILED
                 state = "LEDGER_WRITE_FAILED"
@@ -267,9 +298,9 @@ def execute_build(
             state=state, root_owned=strays, artifact_source=artifact_source,
             artifact_dest=artifact_dest, artifact_sha256=digest,
         )
-        writer.write(fields, monitor.bounded_tail(lines), transition=True)
-        _notify(notifier, fields, state, lines, artifact_source, artifact_dest, returncode)
         terminalized = True
+        notify_terminal(state, lines, artifact_source, artifact_dest, returncode)
+        writer.write(fields, monitor.bounded_tail(lines), transition=True)
         print(f"build finished rc={returncode} log={log}")
         return returncode
     except (
@@ -281,9 +312,7 @@ def execute_build(
         subprocess.SubprocessError,
     ) as exc:
         fields.update(state="FAILED", detail=f"monitor-error-{type(exc).__name__}")
-        writer.write(fields, lines, transition=True)
-        _notify(notifier, fields, "FAILED", lines or (str(exc),), "-", "-", 4)
-        ledger_error = _record_once(
+        ledger_error = record_attempt(
             builds.ledger_paths(toolchain, repo_root), lane, verdict, options.goal, "FAILED",
             cls=build_class, first_error=str(exc)[:200], run_id=run_id,
             started_utc=started_utc, finished_utc=monitor.utc_now(),
@@ -291,10 +320,28 @@ def execute_build(
             phase_seconds=observer.finish_phase(),
         )
         if ledger_error is not None:
-            fields["secondary_error"] = ledger_error
+            add_secondary(ledger_error)
         terminalized = True
+        notify_terminal("FAILED", lines or (str(exc),), "-", "-", 4)
+        writer.write(fields, lines, transition=True)
         return 4
     finally:
         if not terminalized:
             fields.update(state="FAILED", detail="unfinalized-attempt")
+            ledger_error = record_attempt(
+                builds.ledger_paths(toolchain, repo_root),
+                lane,
+                verdict,
+                options.goal,
+                "FAILED",
+                cls=build_class,
+                first_error="unfinalized attempt",
+                run_id=run_id,
+                started_utc=started_utc,
+                finished_utc=monitor.utc_now(),
+                seconds=int(time.monotonic() - started_monotonic),
+                phase_seconds=observer.finish_phase(),
+            )
+            if ledger_error is not None:
+                add_secondary(ledger_error)
             writer.write(fields, lines, transition=True)
