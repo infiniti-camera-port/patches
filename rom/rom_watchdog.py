@@ -1,12 +1,14 @@
-#!/usr/bin/env python3
 """Reconcile stale RUNNING states and retry queued notifications."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+sys.dont_write_bytecode = True
 
 import rom_lanes
 from rom_monitor import StatusWriter, process_matches, utc_now

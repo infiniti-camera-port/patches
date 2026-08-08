@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -49,3 +51,41 @@ def test_watchdog_rejects_reused_pid_identity(tmp_path: Path) -> None:
     result = rom_watchdog.reconcile(status, 1, tmp_path / "missing-notify.json")
 
     assert result == "LOST"
+
+
+def test_watchdog_script_disables_local_bytecode_cache(tmp_path: Path) -> None:
+    # Given ordinary /usr/bin/python3 is armed to create bytecode for local imports.
+    control = tmp_path / "control"
+    control.mkdir()
+    (control / "dependency.py").write_text("VALUE = 1\n")
+    (control / "probe.py").write_text("import dependency\n")
+    subprocess.run(["/usr/bin/python3", str(control / "probe.py")], check=True)
+    assert list(control.rglob("*.pyc"))
+
+    source_root = ROOT.parent
+    copied_root = tmp_path / "tooling"
+    copied_rom = copied_root / "rom"
+    copied_patches = copied_root / "build-patches"
+    copied_rom.mkdir(parents=True)
+    copied_patches.mkdir()
+    for source in (source_root / "rom").glob("*.py"):
+        shutil.copy2(source, copied_rom / source.name)
+    for source in (source_root / "build-patches").glob("*.py"):
+        shutil.copy2(source, copied_patches / source.name)
+    environment = dict(os.environ)
+    environment.pop("PYTHONDONTWRITEBYTECODE", None)
+    environment["PYTHONPATH"] = f"{copied_rom}:{copied_patches}"
+
+    # When the copied watchdog starts through the production interpreter route.
+    subprocess.run(
+        ["/usr/bin/python3", str(copied_rom / "rom_watchdog.py"), "--help"],
+        cwd=copied_root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    # Then its local tooling imports leave no bytecode cache behind.
+    assert not list(copied_root.rglob("__pycache__"))
+    assert not list(copied_root.rglob("*.pyc"))
