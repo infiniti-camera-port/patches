@@ -46,9 +46,9 @@
       "target_repo": "hardware/oplus",
       "source_repo": "infiniti-camera-port/android_hardware_oplus",
       "base_sha": "76d4d0c3c50775edb3cb203874e1aa8270f5e72d",
-      "head_sha": "7d710ad67956d7b1ccad9444f61dac93e3c62bb7",
-      "head_tree_sha": "f3b445776a04468a0a3a7f5f89a8ce7823c2922c",
-      "count": 22,
+      "head_sha": "92ac78797b6417d293bf3efcd715cdb5e214705f",
+      "head_tree_sha": "a7ca1882e262531c52557d1f0335bce7daca83db",
+      "count": 23,
       "apply_order": 1
     },
     {

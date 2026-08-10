@@ -1,0 +1,143 @@
+From 92ac78797b6417d293bf3efcd715cdb5e214705f Mon Sep 17 00:00:00 2001
+From: "vivy (opencode agent)" <1vivy@tutanota.com>
+Date: Thu, 6 Aug 2026 00:28:57 -0600
+Subject: [PATCH] oplus-fwk: back the AOSP-mappable OplusEdrUtils members
+
+OplusEdrUtils was entirely stubbed, so every EDR call from the stock camera
+returned false or null. Fill only the members that have a 1:1 primitive in
+the framework we actually build against, and leave the rest exactly as they
+were. The restraint is the point: probe.md 6 and the postboot matrix prove
+only EIGHT AGGREGATE dex references from OplusCamera to this class, and no
+permitted artifact maps those references to individual methods. Per-method
+reachability is therefore unresolved, and filling a member on the strength of
+a class-level reference count would be guessing at an ABI.
+
+Backed here, each against frameworks_base 043337ae:
+
+  setEdrSdrRatio         -> SurfaceControl.Transaction.setDesiredHdrHeadroom
+                            (SurfaceControl.java:4955)
+  getSurfaceControl      -> View.getViewRootImpl (View.java:21511) then
+                            ViewRootImpl.getSurfaceControl (ViewRootImpl.java:12264)
+  getBlastSurfaceControl -> SurfaceView.getRenderingSurfaceControl
+                            (SurfaceView.java:1487), which returns the same
+                            mBlastSurfaceControl the OOS name refers to
+
+The two accessors are not padding: setEdrSdrRatio needs a SurfaceControl, and
+without them the caller can only ever hand it null, which would make the
+backed member unreachable in practice.
+
+Guarding is what keeps this from being a regression. setDesiredHdrHeadroom
+calls checkPreconditions(sc) and then throws IllegalArgumentException unless
+the ratio is finite and either 0 or >= 1.0f, so an unguarded bridge would
+convert a silent stub into a camera-visible crash - strictly worse than the
+stub it replaced. Out-of-domain ratios are rejected with the API's existing
+"not applied" false rather than clamped, since clamping would quietly change
+what the caller asked for. Every bridge is additionally wrapped, so no
+throwable escapes into the app.
+
+Deliberately NOT done:
+
+  - No gpu_tonemapper bridge. probe.md 4 surveyed it at ad047687 and found a
+    generic GL 3D-LUT engine with no HDR headroom or ratio input, no stock
+    HLG/PQ transfer math, and no caller of its factory anywhere in the open
+    display trees. It cannot supply headroom, so wiring to it would be
+    invention.
+  - No gainmap fill. AOSP has no gainmap primitive on SurfaceControl
+    .Transaction: setGainmap matches 0 lines in SurfaceControl.java while
+    setDesiredHdrHeadroom matches in the same file, so the absence is a
+    controlled result and not a failed search. setEdrGainmapInfo stays a stub.
+  - No device commit. The sdrHdrRatioMap this feature ultimately depends on
+    lands in the brightness topic's single authoritative displayconfig.xml
+    commit; this topic cuts no device tree change.
+
+Recorded assumption EDR-1: non-throwing stubs plus these AOSP-backed members
+are sufficient for the stock camera to launch and preview. Post-flash check is
+probe.md 8.2 - resolve and launch com.oplus.camera, then grep the buffer for
+OplusEdrUtils, setDesiredHdrHeadroom, IllegalArgument, FATAL EXCEPTION and
+AndroidRuntime, requiring no row. If that grep names a specific member, that
+member is the wave-4 input; an unresolved activity or an empty buffer is not a
+pass.
+
+Ultraworked with [Sisyphus](https://github.com/code-yeongyu/oh-my-openagent)
+
+Icp-Layer: restub
+Icp-Class: required-camera-support
+Icp-Restubs: OplusEdrUtils AOSP-primitive-backed members (setEdrSdrRatio, getSurfaceControl, getBlastSurfaceControl) - OplusCamera launch/preview path
+Icp-Undoes: android_hardware_oplus:oplus-fwk/src/com/oplus/view/OplusEdrUtils.java - the fully stubbed EDR surface that returned false/null for every call
+Upstream-Half: sibling orgs adopt only the same AOSP-backed compatibility members their own OplusCamera requires, and keep the rest stubbed until per-method reachability is proven
+Co-authored-by: Sisyphus <clio-agent@sisyphuslabs.ai>
+(cherry picked from commit 983a54f76a88f648c393ad5a3ab98968cc2b2ad7)
+(cherry picked from commit c740503739dd2c485c83d6bb90e1a0f77aa3b776)
+---
+ .../src/com/oplus/view/OplusEdrUtils.java     | 41 +++++++++++++++++--
+ 1 file changed, 37 insertions(+), 4 deletions(-)
+
+diff --git a/oplus-fwk/src/com/oplus/view/OplusEdrUtils.java b/oplus-fwk/src/com/oplus/view/OplusEdrUtils.java
+index 728e4e8f..8b32bbb6 100644
+--- a/oplus-fwk/src/com/oplus/view/OplusEdrUtils.java
++++ b/oplus-fwk/src/com/oplus/view/OplusEdrUtils.java
+@@ -7,8 +7,11 @@ import android.util.Size;
+ import android.view.SurfaceControl;
+ import android.view.SurfaceView;
+ import android.view.View;
++import android.view.ViewRootImpl;
+ 
+-/* Stub implementation - OxygenOS SurfaceControl EDR extensions not available */
++/* Compatibility shim. The OxygenOS SurfaceControl EDR extensions are not available, so
++ * only the members with a 1:1 AOSP primitive are backed; the rest stay non-throwing
++ * stubs because no artifact maps OplusCamera's dex references to individual methods. */
+ public final class OplusEdrUtils {
+     public static final int DOLBY_OFF_WITHOUT_ANIMATION = 131073;
+     public static final int DOLBY_OFF_WITH_ANIMATION = 131072;
+@@ -46,11 +49,26 @@ public final class OplusEdrUtils {
+     }
+ 
+     public static SurfaceControl getSurfaceControl(View view) {
+-        return null;
++        if (view == null) {
++            return null;
++        }
++        try {
++            ViewRootImpl viewRoot = view.getViewRootImpl();
++            return viewRoot == null ? null : viewRoot.getSurfaceControl();
++        } catch (Throwable t) {
++            return null;
++        }
+     }
+ 
+     public static SurfaceControl getBlastSurfaceControl(SurfaceView view) {
+-        return null;
++        if (view == null) {
++            return null;
++        }
++        try {
++            return view.getRenderingSurfaceControl();
++        } catch (Throwable t) {
++            return null;
++        }
+     }
+ 
+     public static int getLocalHdrVersion() {
+@@ -107,6 +125,21 @@ public final class OplusEdrUtils {
+     }
+ 
+     public static boolean setEdrSdrRatio(SurfaceControl sc, SurfaceControl.Transaction transaction, float edrSdrRatio) {
+-        return false;
++        if (sc == null || transaction == null || !sc.isValid()) {
++            return false;
++        }
++        /* setDesiredHdrHeadroom throws IllegalArgumentException unless the ratio is
++         * finite and either 0 (system chooses) or >= 1.0f. Reject out-of-domain values
++         * rather than clamping: clamping would silently alter what the caller asked
++         * for, while returning false is the "not applied" answer this API already has. */
++        if (!Float.isFinite(edrSdrRatio) || (edrSdrRatio != 0.0f && edrSdrRatio < 1.0f)) {
++            return false;
++        }
++        try {
++            transaction.setDesiredHdrHeadroom(sc, edrSdrRatio);
++            return true;
++        } catch (Throwable t) {
++            return false;
++        }
+     }
+ }
