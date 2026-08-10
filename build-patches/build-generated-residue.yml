@@ -1,0 +1,19 @@
+build_generated_residue:
+  - project: prebuilts/build-tools
+    path: path/darwin-x86/date
+    change: deleted-tracked
+  - project: prebuilts/build-tools
+    path: path/darwin-x86/tar
+    change: deleted-tracked
+  - project: prebuilts/build-tools
+    path: path/linux-arm64/date
+    change: deleted-tracked
+  - project: prebuilts/build-tools
+    path: path/linux-arm64/tar
+    change: deleted-tracked
+  - project: prebuilts/build-tools
+    path: path/linux-x86/date
+    change: deleted-tracked
+  - project: prebuilts/build-tools
+    path: path/linux-x86/tar
+    change: deleted-tracked
