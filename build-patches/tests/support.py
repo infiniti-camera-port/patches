@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import Mapping
 
+from tests.imsrtp_fixture import IMSRTP_FILES
+
 OVERLAY_DIR = Path(__file__).resolve().parents[1]
 
 SOONG_FILES = {
@@ -90,7 +92,6 @@ DNG_FILES = {
 """
 }
 
-
 def run_command(arguments: list[str], *, cwd: Path, env: Mapping[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         arguments,
@@ -142,11 +143,13 @@ def create_repo_root(root: Path) -> Path:
     highway = root / "external/google-highway"
     skia = root / "external/skia"
     dng = root / "external/dng_sdk"
+    imsrtp = root / "hardware/oplus"
     initialize_repo(soong, SOONG_FILES)
     initialize_repo(device, DEVICE_FILES)
     initialize_repo(highway, HIGHWAY_FILES)
     initialize_repo(skia, SKIA_FILES)
     initialize_repo(dng, DNG_FILES)
+    initialize_repo(imsrtp, IMSRTP_FILES)
     return root
 
 

@@ -49,3 +49,13 @@ patches:
     expected_head: 60de57ba9f18dd6366914ad74580063fe102c87c
     expected_base_sha256: e317f6e4150f83b3ffbc534924d232e90c77b805284f8fdcb554639ab6419b66
     expected_applied_sha256: 435ffd6377e69a6a919f656a70f428117c81c566a9a12b89ed827023dbc4c664
+
+  - name: oplus-subsys-imsrtp-disable-rust
+    target_repo: hardware/oplus
+    target_path: interfaces/Android.bp
+    apply_order: 7
+    sha256: 30003dbcb9fe966f17d8bd4a8af88d9f2e0fa1f8926012860132d0b7078068eb
+    rationale: IMSRTP has native consumers only, so disable its incompatible unused Rust backend without changing its native API or partition contract.
+    expected_head: 76923bf4fb7e2cdb56ba986459ab1e92604d203a
+    expected_base_sha256: 40ee5acd6d160e014561e7bd181514f74e69f5dff217a5bed19180571042f3a4
+    expected_applied_sha256: f2968b6fc58c3cb42c80e880217d887437606e07a5a994e22b536682b7ec3100

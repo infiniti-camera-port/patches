@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: 1vivy <1vivy@tutanota.com>
+Date: Sat, 11 Jul 2026 12:15:00 -0600
+Subject: [PATCH] interfaces: disable unused subsys_imsrtp Rust backend
+
+The imsrtp interface has native consumers only. Disable its unused Rust
+backend so the generated vendor crate does not require a vendor variant of
+the ODM-only subsys Rust crate.
+---
+ interfaces/Android.bp | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/interfaces/Android.bp b/interfaces/Android.bp
+--- a/interfaces/Android.bp
++++ b/interfaces/Android.bp
+@@ -632,19 +632,22 @@ aidl_interface {
+ aidl_interface {
+     name: "vendor.oplus.hardware.subsys_imsrtp",
+     system_ext_specific: true,
+     vendor_available: true,
+     local_include_dir: "aidl",
+     srcs: ["aidl/vendor/oplus/hardware/subsys_imsrtp/*.aidl"],
+     stability: "vintf",
+     owner: "oplus",
+
+     backend: {
+         cpp: {
+             enabled: true,
+         },
+         java: {
+             enabled: false,
+         },
++        rust: {
++            enabled: false,
++        },
+     },
+     imports: [
+         "vendor.oplus.hardware.subsys-V5",
+--
+2.49.0

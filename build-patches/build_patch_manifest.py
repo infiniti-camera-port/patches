@@ -16,6 +16,7 @@ REQUIRED_PATCHES: Final = frozenset(
         "libdng-sdk-core-only",
         "libhwy-vendor-available",
         "libskia-skcms-vendor-available",
+        "oplus-subsys-imsrtp-disable-rust",
     }
 )
 REQUIRED_MANIFEST_KEYS: Final = frozenset(
